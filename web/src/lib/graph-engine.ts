@@ -76,7 +76,7 @@ export class GraphEngine {
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
       const before = { x: (px - this.world.x) / this.world.scale.x, y: (py - this.world.y) / this.world.scale.y };
-      const s = Math.min(4, Math.max(0.15, this.world.scale.x * Math.exp(-e.deltaY * 0.0015)));
+      const s = Math.min(4, Math.max(0.2, this.world.scale.x * Math.exp(-e.deltaY * 0.0015)));
       this.world.scale.set(s);
       this.world.position.set(px - before.x * s, py - before.y * s);
     };
@@ -237,7 +237,7 @@ export class GraphEngine {
       const c = new Container();
       const label = new Text({
         text: a.name.toUpperCase(),
-        style: { fontFamily: "ui-monospace, SF Mono, Menlo, monospace", fontSize: 14, fill: theme.fg, letterSpacing: 1.6 },
+        style: { fontFamily: "Trebuchet MS, Lucida Grande, Lucida Sans Unicode, Segoe UI, sans-serif", fontSize: 14, fill: theme.fg, letterSpacing: 1.6 },
         resolution: 2,
       });
       label.anchor.set(0.5);
