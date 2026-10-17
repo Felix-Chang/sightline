@@ -37,6 +37,7 @@ export class GraphEngine {
   private layout: GraphLayout = { anchors: [], targets: new Map(), links: [], ring: false };
   private selected: string | null = null;
   private hovered: string | null = null;
+  private layoutTransition = false;
   private destroyed = false;
   private dragMoved = false;
   private ready = false;
@@ -178,11 +179,15 @@ export class GraphEngine {
   applyLayout(layout: GraphLayout, alpha = 0.8) {
     this.layout = layout;
     if (!this.ready) return;
+    // A selected image remains selected, but must travel when the filter changes.
+    this.layoutTransition = true;
     for (const node of this.nodes.values()) {
       const t = layout.targets.get(node.id);
       node.tx = t?.x ?? 0;
       node.ty = t?.y ?? 0;
       node.weights = t?.weights ?? [];
+      node.fx = undefined;
+      node.fy = undefined;
     }
     this.drawAnchors();
     const nodes = [...this.nodes.values()];
@@ -192,17 +197,17 @@ export class GraphEngine {
     this.sim?.stop();
     const collide = forceCollide<Node>()
       .radius((d) => COLLISION_RADIUS * d.scale)
-      .strength(0.9)
-      .iterations(2);
+      .strength(1)
+      .iterations(3);
     this.collide = collide;
     this.sim = forceSimulation<Node, Link>(nodes)
-      .force("x", forceX<Node>((d) => d.tx).strength(0.065))
-      .force("y", forceY<Node>((d) => d.ty).strength(0.065))
+      .force("x", forceX<Node>((d) => d.tx).strength(0.09))
+      .force("y", forceY<Node>((d) => d.ty).strength(0.09))
       .force("collide", collide)
-      .force("link", forceLink<Node, Link>(links).id((d) => d.id).distance(THUMB * 1.4).strength(0.012))
+      .force("link", forceLink<Node, Link>(links).id((d) => d.id).distance(THUMB * 1.4).strength(0.003))
       .alpha(alpha)
-      .alphaDecay(0.018)
-      .velocityDecay(0.25)
+      .alphaDecay(0.03)
+      .velocityDecay(0.38)
       .on("tick", () => this.tick(links));
     this.updateInteraction();
   }
@@ -212,7 +217,7 @@ export class GraphEngine {
     for (const node of this.nodes.values()) {
       const delta = node.targetScale - node.scale;
       if (Math.abs(delta) > 0.001) {
-        node.scale += delta * 0.14;
+        node.scale += delta * 0.08;
         resized = true;
       } else {
         node.scale = node.targetScale;
@@ -223,6 +228,10 @@ export class GraphEngine {
     }
     // d3 caches collision radii, so refresh them while thumbnails animate their size.
     if (resized) this.collide?.radius((d) => COLLISION_RADIUS * Math.max(d.scale, d.targetScale));
+    if (this.layoutTransition && (this.sim?.alpha() ?? 1) < 0.04) {
+      this.layoutTransition = false;
+      this.lockActiveNodes();
+    }
     const g = this.edgeLayer;
     g.clear();
     // Neighbor web: faint curves between images with similar scores.
@@ -341,6 +350,13 @@ export class GraphEngine {
       node.targetScale = active ? ACTIVE_SCALE : 1;
     }
 
+    if (!this.layoutTransition) this.lockActiveNodes();
+    // Reserve the final size immediately, so neighbors are already moving before growth is visible.
+    this.collide?.radius((d) => COLLISION_RADIUS * Math.max(d.scale, d.targetScale));
+    this.sim?.alpha(Math.max(this.sim.alpha(), 0.55)).restart();
+  }
+
+  private lockActiveNodes() {
     const hovered = this.hovered ? this.nodes.get(this.hovered) : null;
     if (hovered && hovered.id !== this.selected) this.nudgeHoveredPastPinned(hovered);
 
@@ -357,9 +373,6 @@ export class GraphEngine {
         node.fy = undefined;
       }
     }
-    // Reserve the final size immediately, so neighbors are already moving before growth is visible.
-    this.collide?.radius((d) => COLLISION_RADIUS * Math.max(d.scale, d.targetScale));
-    this.sim?.alpha(Math.max(this.sim.alpha(), 0.55)).restart();
   }
 
   /** A new hover yields only when it would overlap an already pinned thumbnail. */
