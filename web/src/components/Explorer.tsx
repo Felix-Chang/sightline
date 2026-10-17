@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { loadDataset, type Category, type Dataset, type ImageNode, type Subclass } from "@/lib/data";
 import { anchorsFor, knnLinks, targetsFor, umapTargets } from "@/lib/layout";
 import type { GraphLayout } from "@/lib/graph-engine";
+import { anchorHex } from "@/lib/theme";
 
 const Graph = dynamic(() => import("./Graph"), { ssr: false });
 
@@ -243,14 +244,14 @@ function DetailCard({ image, pinned, categories, subsByCat, onClose }: {
           <div key={c.id} className="mt-5">
             <p className="font-serif text-base font-semibold">{c.name}</p>
             <ul className="mt-2 space-y-2">
-              {(subsByCat.get(c.id) ?? []).map((s) => {
+              {(subsByCat.get(c.id) ?? []).map((s, i) => {
                 const v = image.scores[s.id] ?? 0;
                 return (
                   <li key={s.id}>
                     <div className="flex items-center gap-2 text-xs">
                       <span className="w-28 shrink-0 truncate font-serif">{s.name}</span>
                       <div className="h-1 flex-1 rounded-full bg-border">
-                        <div className="h-full rounded-full bg-accent" style={{ width: `${Math.round(v * 100)}%` }} />
+                        <div className="h-full rounded-full" style={{ width: `${Math.round(v * 100)}%`, backgroundColor: anchorHex(i) }} />
                       </div>
                       <span className="w-8 text-right font-label text-[11px] tabular-nums text-muted">{Math.round(v * 100)}</span>
                     </div>
