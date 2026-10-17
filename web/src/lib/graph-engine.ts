@@ -2,7 +2,7 @@ import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from 
 import { forceCollide, forceLink, forceSimulation, forceX, forceY, type Simulation, type SimulationNodeDatum } from "d3-force";
 import type { ImageNode } from "./data";
 import { RING_RADIUS, type Anchor, type Target } from "./layout";
-import { canvasHex, theme } from "./theme";
+import { anchorColor, canvasHex, theme } from "./theme";
 
 const THUMB = 64;
 
@@ -208,7 +208,7 @@ export class GraphEngine {
         const w = node.weights[i] ?? 0;
         if (w < 0.4 || node.x == null) continue;
         g.moveTo(anchor.x, anchor.y).quadraticCurveTo((anchor.x + node.x) * 0.35, (anchor.y + node.y!) * 0.35, node.x, node.y!);
-        g.stroke({ width: 1.2, color: theme.accent, alpha: Math.min(0.7, 0.15 + (w - 0.4) * 1.4) });
+        g.stroke({ width: 1.2, color: anchorColor(i), alpha: Math.min(0.7, 0.15 + (w - 0.4) * 1.4) });
       }
     });
   }
@@ -227,14 +227,15 @@ export class GraphEngine {
         .stroke({ width: 1, color: theme.fg, alpha: 0.15 });
       this.anchorLayer.addChild(axis);
     }
-    for (const a of anchors) {
-      // Node where the threads start: white disc with a red ring and center dot.
+    anchors.forEach((a, i) => {
+      const color = anchorColor(i);
+      // Node where the threads start: white disc with a coloured ring and center dot.
       const node = new Graphics()
         .circle(a.x, a.y, 11)
         .fill({ color: theme.surface })
-        .stroke({ width: 1.5, color: theme.accent })
+        .stroke({ width: 1.5, color })
         .circle(a.x, a.y, 3.5)
-        .fill({ color: theme.accent });
+        .fill({ color });
       this.anchorLayer.addChild(node);
 
       const c = new Container();
@@ -248,14 +249,14 @@ export class GraphEngine {
       const bg = new Graphics()
         .roundRect(-label.width / 2 - pad, -label.height / 2 - 6, label.width + pad * 2, label.height + 12, 999)
         .fill({ color: theme.surface })
-        .stroke({ width: 1, color: theme.accent });
+        .stroke({ width: 1, color });
       c.addChild(bg, label);
       // Push labels outward from the center so they sit outside the cluster.
       const len = Math.hypot(a.x, a.y) || 1;
       const push = anchors.length === 2 ? 70 : 90;
       c.position.set(a.x + (a.x / len) * push, a.y + (a.y / len) * push);
       this.labelLayer.addChild(c);
-    }
+    });
   }
 
   /** Hovered and selected thumbnails ride in overlayLayer, clear of the anchor labels. */
