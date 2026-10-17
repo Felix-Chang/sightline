@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 from skimage.metrics import structural_similarity as ssim
 
 ANALYSIS_SIZE = 512
@@ -16,7 +16,7 @@ EPS = 1e-6
 
 
 def load_rgb(path: str) -> Image.Image:
-    """Open any image as RGB, compositing transparency onto white."""
+    """Open any image as upright 8-bit RGB, compositing transparency onto white."""
     try:
         import pillow_heif  # noqa: F401  (registers HEIC support)
 
@@ -25,7 +25,14 @@ def load_rgb(path: str) -> Image.Image:
         pass
     img = Image.open(path)
     img.seek(0)  # first frame of GIFs
-    if img.mode in ("RGBA", "LA", "P"):
+    img = ImageOps.exif_transpose(img)  # phone photos store rotation in EXIF, not pixels
+    if img.mode in ("I", "I;16", "I;16B", "I;16L", "F"):
+        # 16-bit / float grayscale: rescale to 0-255, else convert() clips it to near-white.
+        arr = np.asarray(img, dtype=np.float32)
+        lo, hi = float(arr.min()), float(arr.max())
+        arr = (arr - lo) / (hi - lo or 1.0) * 255.0
+        img = Image.fromarray(arr.astype(np.uint8), "L")
+    if img.mode in ("RGBA", "LA", "P", "PA", "RGBa", "La") or "transparency" in img.info:
         img = img.convert("RGBA")
         bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
         img = Image.alpha_composite(bg, img)
@@ -300,4 +307,6 @@ def analyze(img: Image.Image) -> dict[str, float]:
     sym["balance_radial"] *= structure
     metrics.update(sym)
     metrics.update(_orientation_metrics(gray))
-    return {k: round(float(v), 6) for k, v in metrics.items()}
+    # NaN/inf (e.g. SSIM on a perfectly flat image) isn't valid JSON and would be rejected by
+    # the database, so clamp it to 0.
+    return {k: round(float(v), 6) if np.isfinite(v) else 0.0 for k, v in metrics.items()}

@@ -2,11 +2,9 @@ import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from 
 import { forceCollide, forceLink, forceSimulation, forceX, forceY, type Simulation, type SimulationNodeDatum } from "d3-force";
 import type { ImageNode } from "./data";
 import { RING_RADIUS, type Anchor, type Target } from "./layout";
+import { canvasHex, theme } from "./theme";
 
 const THUMB = 64;
-const ACCENT = 0xe0484f;
-const MUTED = 0x8b9096;
-const PAPER = 0xecebe6;
 
 type Node = SimulationNodeDatum & { id: string; tx: number; ty: number; weights: number[] };
 type Link = { source: string | Node; target: string | Node };
@@ -41,7 +39,7 @@ export class GraphEngine {
   async init() {
     await this.app.init({
       resizeTo: this.el,
-      background: "#121314",
+      background: canvasHex,
       antialias: true,
       resolution: Math.min(window.devicePixelRatio || 1, 2),
       autoDensity: true,
@@ -196,7 +194,7 @@ export class GraphEngine {
       const my = (a.y! + b.y!) / 2;
       g.moveTo(a.x, a.y!).quadraticCurveTo(mx * 0.9, my * 0.9, b.x, b.y!);
     }
-    g.stroke({ width: 1, color: MUTED, alpha: 0.16 });
+    g.stroke({ width: 1, color: theme.muted, alpha: 0.28 });
     // Anchor threads: accent curves from each anchor to images that strongly have that quality.
     const { anchors } = this.layout;
     anchors.forEach((anchor, i) => {
@@ -204,7 +202,7 @@ export class GraphEngine {
         const w = node.weights[i] ?? 0;
         if (w < 0.4 || node.x == null) continue;
         g.moveTo(anchor.x, anchor.y).quadraticCurveTo((anchor.x + node.x) * 0.35, (anchor.y + node.y!) * 0.35, node.x, node.y!);
-        g.stroke({ width: 1.2, color: ACCENT, alpha: Math.min(0.55, (w - 0.4) * 1.4) });
+        g.stroke({ width: 1.2, color: theme.accent, alpha: Math.min(0.7, 0.15 + (w - 0.4) * 1.4) });
       }
     });
   }
@@ -213,28 +211,37 @@ export class GraphEngine {
     this.anchorLayer.removeChildren().forEach((c) => c.destroy());
     const { anchors, ring } = this.layout;
     if (ring && anchors.length > 2) {
-      const r = new Graphics().circle(0, 0, RING_RADIUS).stroke({ width: 1, color: MUTED, alpha: 0.18 });
+      const r = new Graphics().circle(0, 0, RING_RADIUS).stroke({ width: 1, color: theme.fg, alpha: 0.1 });
       this.anchorLayer.addChild(r);
     } else if (anchors.length === 2) {
       const axis = new Graphics()
         .moveTo(anchors[0].x, 0)
         .lineTo(anchors[1].x, 0)
-        .stroke({ width: 1, color: MUTED, alpha: 0.25 });
+        .stroke({ width: 1, color: theme.fg, alpha: 0.15 });
       this.anchorLayer.addChild(axis);
     }
     for (const a of anchors) {
+      // Node where the threads start: white disc with a red ring and center dot.
+      const node = new Graphics()
+        .circle(a.x, a.y, 11)
+        .fill({ color: theme.surface })
+        .stroke({ width: 1.5, color: theme.accent })
+        .circle(a.x, a.y, 3.5)
+        .fill({ color: theme.accent });
+      this.anchorLayer.addChild(node);
+
       const c = new Container();
       const label = new Text({
         text: a.name.toUpperCase(),
-        style: { fontFamily: "ui-monospace, SF Mono, Menlo, monospace", fontSize: 15, fill: PAPER, letterSpacing: 1.5 },
+        style: { fontFamily: "ui-monospace, SF Mono, Menlo, monospace", fontSize: 14, fill: theme.fg, letterSpacing: 1.6 },
         resolution: 2,
       });
       label.anchor.set(0.5);
       const pad = 10;
       const bg = new Graphics()
-        .roundRect(-label.width / 2 - pad, -label.height / 2 - 6, label.width + pad * 2, label.height + 12, 6)
-        .fill({ color: 0x1b1d1f })
-        .stroke({ width: 1.5, color: ACCENT });
+        .roundRect(-label.width / 2 - pad, -label.height / 2 - 6, label.width + pad * 2, label.height + 12, 999)
+        .fill({ color: theme.surface })
+        .stroke({ width: 1, color: theme.border });
       c.addChild(bg, label);
       // Push labels outward from the center so they sit outside the cluster.
       const len = Math.hypot(a.x, a.y) || 1;
@@ -270,11 +277,16 @@ export class GraphEngine {
     c.scale.set(active ? 1.7 : 1);
     const sprite = c.children[1] as Sprite;
     const frame = c.children[0] as Graphics;
+    const w = sprite.width;
+    const h = sprite.height;
     frame.clear();
+    // Soft paper shadow under every thumbnail so white posters still read on the light canvas.
+    frame.rect(-w / 2 + 1, -h / 2 + 2.5, w, h).fill({ color: theme.fg, alpha: 0.12 });
     if (active) {
-      frame
-        .rect(-sprite.width / 2 - 3, -sprite.height / 2 - 3, sprite.width + 6, sprite.height + 6)
-        .fill({ color: id === this.selected ? ACCENT : PAPER });
+      const pad = id === this.selected ? 3 : 2;
+      frame.rect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2).fill({ color: id === this.selected ? theme.accent : theme.fg });
+    } else {
+      frame.rect(-w / 2 - 0.5, -h / 2 - 0.5, w + 1, h + 1).stroke({ width: 1, color: theme.border });
     }
   }
 

@@ -14,6 +14,9 @@ from db import BUCKET, chunked, client, taxonomy, vec
 from models import DINO, PromptBank, SigLIP
 
 THUMB_SIZE = 256
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # Supabase free-tier per-file limit
+# Must match the vector(...) columns in supabase/migrations/*_init.sql.
+SIGLIP_DIM, DINO_DIM = 1152, 768
 
 
 class Scorer:
@@ -26,12 +29,36 @@ class Scorer:
         print("loading DINOv2 ...")
         self.dino = DINO()
         self.prompts = PromptBank(self.siglip, {s.id: list(s.prompts) for s in self.subs})
+        self._check_dims()
+
+    def _check_dims(self) -> None:
+        """Fail before touching the database if a model swap changed the embedding size."""
+        probe = Image.new("RGB", (64, 64), "white")
+        got = (self.siglip.embed_images([probe]).shape[1], self.dino.embed_images([probe]).shape[1])
+        if got != (SIGLIP_DIM, DINO_DIM):
+            raise SystemExit(
+                f"Embedding sizes {got} don't match the database columns {(SIGLIP_DIM, DINO_DIM)}. "
+                "Unset SIGLIP_MODEL / DINO_MODEL, or add a migration that changes the vector sizes "
+                "(and re-ingest everything)."
+            )
 
     def exists(self, sha: str) -> bool:
-        return bool(client().table("images").select("id").eq("sha256", sha).execute().data)
+        """True if this file is fully ingested. A row left without scores by an interrupted
+        run (Ctrl+C, network drop) is deleted here so the file gets re-ingested."""
+        rows = client().table("images").select("id").eq("sha256", sha).execute().data
+        if not rows:
+            return False
+        iid = rows[0]["id"]
+        if client().table("scores").select("image_id").eq("image_id", iid).limit(1).execute().data:
+            return True
+        client().table("images").delete().eq("id", iid).execute()
+        return False
 
     def ingest(self, path: Path, source_url: str | None = None) -> str | None:
         data = path.read_bytes()
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise ValueError(f"{len(data) / 1e6:.0f} MB is over Supabase's 50 MB upload limit; "
+                             "export it smaller (about 2000px JPEG/WebP is plenty)")
         sha = hashlib.sha256(data).hexdigest()
         if self.exists(sha):
             return None
@@ -70,6 +97,11 @@ class Scorer:
             if s.id in sig_scores:
                 scores.append({"image_id": row["id"], "subclass_id": s.id,
                                "source": "siglip", "value": sig_scores[s.id]})
-        for batch in chunked(scores):
-            client().table("scores").insert(batch).execute()
+        try:
+            for batch in chunked(scores):
+                client().table("scores").insert(batch).execute()
+        except Exception:
+            # Don't leave a scoreless row behind; the next run will retry this file.
+            client().table("images").delete().eq("id", row["id"]).execute()
+            raise
         return row["id"]

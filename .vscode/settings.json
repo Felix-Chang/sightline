@@ -1,0 +1,6 @@
+{
+  // Tailwind v4 at-rules (@theme, @import "tailwindcss") aren't standard CSS;
+  // treat .css as Tailwind so the editor stops flagging them as errors.
+  "files.associations": { "*.css": "tailwindcss" },
+  "css.lint.unknownAtRules": "ignore"
+}

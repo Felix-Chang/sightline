@@ -70,9 +70,12 @@ export default function Explorer() {
   if (error) {
     return (
       <Centered>
-        <p className="font-mono text-sm text-accent">Couldn&apos;t load data</p>
-        <p className="mt-2 max-w-md text-sm text-muted">{error}</p>
-        <p className="mt-2 text-xs text-muted">Is Supabase running? (`supabase start` in the project folder)</p>
+        <p className="font-serif text-2xl">Couldn&apos;t load references</p>
+        <p className="mt-2 max-w-md font-mono text-xs text-accent">{error}</p>
+        <p className="mt-3 max-w-md text-sm text-muted">
+          Check the anon key in <code className="font-mono text-fg">web/.env.local</code> and restart <code className="font-mono text-fg">npm run dev</code>.
+          If it worked before, the Supabase project may be paused. See Troubleshooting in the README.
+        </p>
       </Centered>
     );
   }
@@ -80,8 +83,8 @@ export default function Explorer() {
   if (data.images.length === 0) {
     return (
       <Centered>
-        <p className="font-mono text-sm">No images yet</p>
-        <p className="mt-2 text-sm text-muted">Run <code className="text-paper">uv run python pipeline/batch.py data/images</code> to add some.</p>
+        <p className="font-serif text-2xl">No images yet</p>
+        <p className="mt-2 text-sm text-muted">Run <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-fg">uv run python pipeline/batch.py data/images</code> to add some.</p>
       </Centered>
     );
   }
@@ -91,15 +94,16 @@ export default function Explorer() {
       <Graph images={data.images} layout={layout} selectedId={selectedId} onHover={onHover} onSelect={onSelect} />
 
       {/* Title + filter card */}
-      <section className="pointer-events-none absolute left-4 top-4 w-[min(360px,calc(100vw-2rem))] space-y-3">
-        <div className="pointer-events-auto rounded-xl border border-line bg-panel/90 p-4 backdrop-blur">
+      <section className="pointer-events-none absolute left-4 top-4 max-h-[calc(100dvh-5rem)] w-[min(360px,calc(100vw-2rem))] space-y-3 overflow-y-auto">
+        <div className={`pointer-events-auto ${CARD} p-5`}>
           <div className="flex items-baseline justify-between">
-            <h1 className="text-xl font-semibold tracking-tight">SightLine</h1>
-            <span className="font-mono text-xs text-muted">{data.images.length} references</span>
+            <h1 className="font-serif text-[28px] leading-none tracking-tight">SightLine</h1>
+            <span className="font-mono text-[11px] text-muted">{data.images.length} refs</span>
           </div>
-          <p className="mt-1 text-xs text-muted">Sorted by visual language, not subject.</p>
+          <p className="mt-2 text-xs text-muted">References sorted by visual language, not subject.</p>
 
-          <div className="mt-4 flex flex-wrap gap-1.5">
+          <Eyebrow n="01" className="mt-5">Filter</Eyebrow>
+          <div className="mt-2 flex flex-wrap gap-1.5">
             <FilterPill active={categoryId === ALL} onClick={() => setCategoryId(ALL)}>All</FilterPill>
             {categories.map((c) => (
               <FilterPill key={c.id} active={c.id === categoryId} onClick={() => setCategoryId(c.id)}>{c.name}</FilterPill>
@@ -112,14 +116,14 @@ export default function Explorer() {
 
       {/* Focus slider */}
       {category && (
-        <div className="absolute bottom-4 left-4 flex items-center gap-3 rounded-lg border border-line bg-panel/90 px-3 py-2 font-mono text-xs text-muted backdrop-blur">
+        <div className={`absolute bottom-4 left-4 flex items-center gap-3 ${CARD} px-4 py-2.5 font-mono text-[11px] text-muted`}>
           <label htmlFor="focus">Blend</label>
-          <input id="focus" type="range" min={1} max={8} step={0.5} value={focus} onChange={(e) => setFocus(Number(e.target.value))} className="w-28 accent-[#e0484f]" />
+          <input id="focus" type="range" min={1} max={8} step={0.5} value={focus} onChange={(e) => setFocus(Number(e.target.value))} className="w-28 accent-accent" />
           <span>Separate</span>
         </div>
       )}
 
-      <p className="absolute bottom-4 right-4 hidden font-mono text-[11px] text-muted md:block">
+      <p className="absolute bottom-5 right-5 hidden font-mono text-[11px] text-muted md:block">
         scroll to zoom · drag to pan · ← → filters
       </p>
 
@@ -137,16 +141,30 @@ export default function Explorer() {
   );
 }
 
+// Shared card look: white sheet, hairline border, soft paper shadow (like the reel's light frames).
+const CARD = "rounded-2xl border border-border bg-surface/95 shadow-[0_1px_2px_rgba(28,28,26,0.06),0_8px_24px_rgba(28,28,26,0.06)] backdrop-blur";
+
 function Centered({ children }: { children: React.ReactNode }) {
   return <main className="flex h-dvh flex-col items-center justify-center px-4 text-center">{children}</main>;
+}
+
+/** Numbered monospace label, e.g. "01  FILTER". */
+function Eyebrow({ n, children, className = "" }: { n: string; children: React.ReactNode; className?: string }) {
+  return (
+    <p className={`font-mono text-[11px] uppercase tracking-[0.14em] text-muted ${className}`}>
+      <span className="text-accent">{n}</span>
+      <span className="ml-2">{children}</span>
+    </p>
+  );
 }
 
 function FilterPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
+      aria-pressed={active}
       className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-        active ? "border-accent bg-accent/15 text-paper" : "border-line text-muted hover:border-muted hover:text-paper"
+        active ? "border-fg bg-fg text-surface" : "border-border bg-surface text-fg hover:border-fg/40"
       }`}
     >
       {children}
@@ -156,16 +174,19 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
 
 function CategoryCard({ category, subs }: { category: Category; subs: Subclass[] }) {
   return (
-    <div className="pointer-events-auto rounded-xl border border-line bg-panel/90 p-4 backdrop-blur">
-      <p className="font-mono text-[11px] tracking-widest text-accent">FILTER · {category.kind === "spectrum" ? "SPECTRUM" : "QUALITIES"}</p>
-      <h2 className="mt-1 text-lg font-medium">{category.name}</h2>
+    <div className={`pointer-events-auto ${CARD} p-5`}>
+      <Eyebrow n="02">{category.kind === "spectrum" ? "Spectrum" : "Qualities"}</Eyebrow>
+      <h2 className="mt-1.5 font-serif text-[26px] leading-tight">{category.name}</h2>
       {category.description && <p className="mt-1 text-xs text-muted">{category.description}</p>}
-      <ul className="mt-3 space-y-2">
-        {subs.map((s) => (
-          <li key={s.id} className="text-xs">
-            <span className="font-medium text-paper">{s.name}</span>
-            <MethodBadge sub={s} />
-            <p className="text-muted">{s.definition}</p>
+      <ul className="mt-4 divide-y divide-border border-t border-border">
+        {subs.map((s, i) => (
+          <li key={s.id} className="py-2.5 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px] text-muted">{String(i + 1).padStart(2, "0")}</span>
+              <span className="font-medium text-fg">{s.name}</span>
+              <MethodBadge sub={s} />
+            </div>
+            <p className="mt-0.5 pl-6 text-muted">{s.definition}</p>
           </li>
         ))}
       </ul>
@@ -178,7 +199,9 @@ function MethodBadge({ sub }: { sub: Subclass }) {
   return (
     <span
       title={measured ? `${Math.round(sub.pixel_weight * 100)}% pixel math, rest SigLIP` : "Scored by SigLIP only"}
-      className={`ml-2 rounded px-1.5 py-px font-mono text-[10px] ${measured ? "bg-paper/10 text-paper" : "bg-accent/15 text-accent"}`}
+      className={`ml-auto rounded-full border px-2 py-px font-mono text-[10px] ${
+        measured ? "border-border text-muted" : "border-accent/40 text-accent"
+      }`}
     >
       {measured ? "measured" : "perceived"}
     </span>
@@ -205,27 +228,29 @@ function DetailCard({ image, pinned, categories, subsByCat, onClose }: {
   };
 
   return (
-    <aside className="absolute right-4 top-4 flex max-h-[calc(100dvh-2rem)] w-[min(340px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-line bg-panel/95 backdrop-blur">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={image.fullUrl} alt={image.filename ?? "reference"} className="max-h-64 w-full bg-ink object-contain" />
-      <div className="overflow-y-auto p-4">
+    <aside className={`absolute right-4 top-4 flex max-h-[calc(100dvh-2rem)] w-[min(340px,calc(100vw-2rem))] flex-col overflow-hidden ${CARD}`}>
+      <div className="border-b border-border bg-canvas p-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={image.fullUrl} alt={image.filename ?? "reference"} className="mx-auto max-h-60 object-contain shadow-sm" />
+      </div>
+      <div className="overflow-y-auto p-5">
         <div className="flex items-start justify-between gap-2">
-          <p className="truncate font-mono text-xs text-muted">{image.filename}</p>
-          {pinned && <button onClick={onClose} className="text-xs text-muted hover:text-paper" aria-label="Close">✕</button>}
+          <p className="truncate font-mono text-[11px] text-muted">{image.filename}</p>
+          {pinned && <button onClick={onClose} className="text-xs text-muted hover:text-fg" aria-label="Close">✕</button>}
         </div>
         {!pinned && <p className="mt-1 text-[11px] text-muted">Click the image to pin it and correct scores.</p>}
 
         {categories.map((c) => (
-          <div key={c.id} className="mt-4">
-            <p className="font-mono text-[11px] tracking-widest text-muted">{c.name.toUpperCase()}</p>
-            <ul className="mt-1.5 space-y-1.5">
+          <div key={c.id} className="mt-5">
+            <p className="font-serif text-base">{c.name}</p>
+            <ul className="mt-2 space-y-2">
               {(subsByCat.get(c.id) ?? []).map((s) => {
                 const v = image.scores[s.id] ?? 0;
                 return (
                   <li key={s.id}>
                     <div className="flex items-center gap-2 text-xs">
                       <span className="w-28 shrink-0 truncate">{s.name}</span>
-                      <div className="h-1.5 flex-1 rounded-full bg-line">
+                      <div className="h-1 flex-1 rounded-full bg-border">
                         <div className="h-full rounded-full bg-accent" style={{ width: `${Math.round(v * 100)}%` }} />
                       </div>
                       <span className="w-8 text-right font-mono text-[11px] text-muted">{Math.round(v * 100)}</span>
@@ -236,8 +261,8 @@ function DetailCard({ image, pinned, categories, subsByCat, onClose }: {
                           <button
                             key={l}
                             onClick={() => correct(s.id, l)}
-                            className={`rounded border px-1.5 py-px font-mono text-[10px] ${
-                              saved[s.id] === l ? "border-accent text-accent" : "border-line text-muted hover:text-paper"
+                            className={`rounded-full border px-2 py-px font-mono text-[10px] ${
+                              saved[s.id] === l ? "border-accent bg-accent text-surface" : "border-border text-muted hover:border-fg/40 hover:text-fg"
                             }`}
                           >
                             {l}
