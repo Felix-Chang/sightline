@@ -1,22 +1,28 @@
 @import "tailwindcss";
 
-/* System fonts only, so the demo works offline. */
+/*
+ * Light "specimen sheet" theme: warm paper canvas, white cards, ink text, one red accent.
+ * System fonts only, so the demo works offline. Colors are named by role, not by hue,
+ * and mirrored in src/lib/theme.ts for the PixiJS canvas.
+ */
 @theme {
   --font-sans: ui-sans-serif, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
-  --color-ink: #121314;
-  --color-panel: #1b1d1f;
-  --color-line: #2c2f33;
-  --color-muted: #8b9096;
-  --color-paper: #ecebe6;
-  --color-accent: #e0484f;
+
+  --color-canvas: #efeee9;   /* page + graph background */
+  --color-surface: #ffffff;  /* cards, panels */
+  --color-border: #dcdad3;   /* hairlines */
+  --color-fg: #1c1c1a;       /* primary text */
+  --color-muted: #6f6c64;    /* secondary text (4.9:1 on white) */
+  --color-accent: #c8312f;   /* selection, anchors, threads (5.1:1 on white) */
 }
 
 html,
 body {
   height: 100%;
-  background: var(--color-ink);
-  color: var(--color-paper);
+  background: var(--color-canvas);
+  color: var(--color-fg);
   font-family: var(--font-sans);
   overflow: hidden;
 }
