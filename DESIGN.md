@@ -15,8 +15,7 @@ Inspiration: an art-direction teacher's reel ("A Taxonomy of Visuals") showing r
 ## What Makes This Cool
 
 - **The graph rearranges itself.** Pick a filter (e.g. *Line*) and every thumbnail drifts into a web of clusters: straight-line images group together, then shade toward jagged, then curved, then implied. Switch to *Value* and they flow into a high-key ↔ low-key gradient.
-- **It's honest about what it knows.** Every score is either *measured* (pixel math) or *perceived* (vision model), and the demo shows per-feature accuracy against hand labels.
-- **It learns your eye.** Every correction you make is saved as training data. Stretch goal: train small probes so the scoring becomes yours.
+- **It's honest about what it knows.** Every score is either *measured* (pixel math) or *perceived* (vision model).
 
 ## Constraints
 
@@ -31,9 +30,7 @@ Inspiration: an art-direction teacher's reel ("A Taxonomy of Visuals") showing r
 1. **Fixed seed taxonomy you write**, not unsupervised clustering. Categories and sub-classes are rows loaded into the DB before any images exist ("seeding").
 2. **Every image gets one score per sub-class.** Scores come from pixel math (measurable features) and SigLIP 2 text-prompt similarity (perceptual features). No LLM.
 3. **Spectrum categories store one continuous value.** They make the cleanest gradients.
-4. **Supabase** (Postgres + pgvector + Storage) is the single database: image files, scores, embeddings, corrections, and the taxonomy graph as tables. No separate graph DB.
-5. **Corrections are saved from hour 1.** Probe training on DINOv2 embeddings is a stretch goal / v2.
-6. **Validation gate:** only categories that agree with ~50 hand-labeled images (≥75%) appear in the demo. The rest stay in the DB, hidden.
+4. **Supabase** (Postgres + pgvector + Storage) is the single database: image files, scores, embeddings, and the taxonomy graph as tables. No separate graph DB.
 
 ## Feature Taxonomy (seed)
 
@@ -56,15 +53,15 @@ Method key: **PX** = pixel math (OpenCV/numpy), **SL** = SigLIP 2 zero-shot text
 | Rhythm & pattern | T | Regular → Alternating → Progressive | PX (FFT/autocorrelation peaks) + SL |
 | Unity & variety | S + T | Minimal ↔ Chaotic; + Harmonious | PX (edge density, entropy, palette spread) |
 
-\*Form is kept in the seed for illustrations that depict volume; expected to fail the validation gate on flat graphics. Fold into Shape if so.
+\*Form is kept in the seed for illustrations that depict volume. Fold it into Shape if it is not useful on flat graphics.
 **Cut:** Proportion & scale (physical size of the artwork can't be read from a 2D file; "scale contrast" covers in-image scale).
 
 ### How SigLIP scores work (no LLM)
 - For each sub-class, write 3–5 descriptive prompts (prompt ensemble), e.g. Line/Jagged: "a graphic made of sharp zigzag lines", "an illustration with jagged angular strokes".
 - Embed the prompts once with the SigLIP 2 text encoder and the image with the image encoder. Score = mean cosine similarity across that sub-class's prompts.
 - **Normalize per sub-class across the whole collection** (z-score, then sigmoid or rank-percentile). Raw CLIP/SigLIP similarities are compressed into a narrow band, and normalizing spreads them out.
-- Within a tag category, apply a softmax across sub-classes (temperature tuned on hand labels) so anchor weights sum to 1.
-- Combine with pixel-math scores as a weighted average per sub-class. Weights are set by which source agrees better with the hand labels.
+- Within a tag category, apply a softmax across sub-classes so anchor weights sum to 1.
+- Combine pixel-math and SigLIP scores as a weighted average per sub-class.
 
 ## Data Model (Supabase)
 
@@ -73,7 +70,7 @@ Method key: **PX** = pixel math (OpenCV/numpy), **SL** = SigLIP 2 zero-shot text
 create table categories (
   id text primary key,            -- 'line', 'value', ...
   name text, kind text check (kind in ('spectrum','tags')),
-  enabled boolean default false,  -- flipped on by the validation gate
+  enabled boolean default true,
   sort int
 );
 create table subclasses (
@@ -93,22 +90,15 @@ create table images (
   width int, height int, source_url text,
   created_at timestamptz default now(),
   siglip vector(1152),            -- SigLIP 2 so400m image embedding
-  dino   vector(768),             -- DINOv2 ViT-B/14 embedding (neighbors + future probes)
+  dino   vector(768),             -- DINOv2 ViT-B/14 embedding (neighbors)
   metrics jsonb                   -- raw pixel measurements, for debugging/hover
 );
 create table scores (
   image_id uuid references images on delete cascade,
   subclass_id text references subclasses,
   value real,                     -- 0..1 after normalization
-  source text,                    -- 'pixel' | 'siglip' | 'combined' | 'probe'
+  source text,                    -- 'pixel' | 'siglip' | 'combined'
   primary key (image_id, subclass_id, source)
-);
-create table corrections (        -- your labels: hand-label set + UI fixes
-  id bigserial primary key,
-  image_id uuid references images on delete cascade,
-  subclass_id text references subclasses,
-  label text check (label in ('absent','present','dominant')),
-  created_at timestamptz default now()
 );
 create index on images using hnsw (siglip vector_cosine_ops);
 create index on images using hnsw (dino vector_cosine_ops);
@@ -121,7 +111,7 @@ The "graph" is categories → subclasses → scores → images. No graph databas
 2. **Normalize for analysis:** resize to 512px on the long side, convert to grayscale (luminance), HSV and LAB copies.
 3. **Pixel math → `images.metrics` (raw) and `scores` (source='pixel'):** e.g. mean luminance → Value; hue histogram → Warm/Cool/Complementary/Monochromatic; Laplacian variance → Texture; mirror-SSIM → Bilateral; Hough lines + contour curvature → Straight/Curved/Jagged; edge-orientation histogram → Diagonal; FFT peaks → Regular rhythm; saliency map → Centered/Isolation/Negative space.
 4. **SigLIP 2 → `images.siglip` and `scores` (source='siglip'):** one image embedding; cosine similarity against each sub-class's precomputed prompt embeddings.
-5. **DINOv2 → `images.dino`:** embedding for neighbors and future probes. No scores yet.
+5. **DINOv2 → `images.dino`:** embedding for nearest-neighbor matching. No scores yet.
 6. **Combine (after the whole batch):** normalize each sub-class across the collection (rank-percentile), weighted-merge pixel + SigLIP into `scores` (source='combined'), softmax within tag categories. This step reruns over all images whenever new ones arrive, because normalization depends on the collection.
 7. **Layout prep:** UMAP of enabled combined scores for the "All" view, stored per image.
 
@@ -174,7 +164,6 @@ sightline/
     combine.py                # normalize + merge + per-category softmax
     score_image.py            # single entry point
     batch.py                  # folder -> Supabase (Approach A)
-    validate.py               # agreement vs corrections -> flips categories.enabled
     server.py                 # FastAPI /upload, /neighbors (Approach B)
   web/                        # Next.js + PixiJS graph
   supabase/schema.sql
@@ -186,26 +175,25 @@ sightline/
 |---|---|---|
 | 0–3 | Supabase schema, `taxonomy.yaml` seed, collect ~150 varied images | — |
 | 3–10 | `pixel.py`, `siglip.py`, `dino.py`, `combine.py`, `batch.py` writing to Supabase | drop DINOv2 neighbors |
-| 10–12 | Hand-label ~50 images (absent/present/dominant), run `validate.py`, enable passing categories | enable fewer categories |
+| 10–12 | Review taxonomy prompts and score distributions | reduce to the strongest categories |
 | 12–22 | Pixi + d3-force graph, anchor layout, filter bar, animated transitions, hover card | static anchor positions, no physics |
 | **22–25** | **Checkpoint: Approach A works end to end (the deliverable)** | demo A |
-| 25–30 | Polish: hover card with scores + "measured vs perceived" badges, correct-a-label control (writes `corrections`), more images | skip corrections |
+| 25–30 | Polish: hover card with scores + "measured vs perceived" badges, more images | — |
 | 30–36 | Demo script, accuracy slide, buffer, sleep | — |
 
 **Stretch 1 (if ahead at hour 25):** FastAPI `/upload` (~4h). Store the file, run `score_image`, insert rows; the front end picks up the new row (Supabase realtime) and the image flies into the graph.
-**Stretch 2:** `train_probes.py` (logistic regression per sub-class on DINOv2 embeddings from `corrections`), rescore, and show before/after accuracy.
 
 ## Open Questions
 
 - SigLIP 2 so400m speed on the laptop (MPS): measure in hour 3. Budget ~0.3s/image; drop to base if slower than 1s.
-- Prompt quality for abstract sub-classes (Implied line, Convergence, Progressive rhythm): likely to fail the gate in v1. That's acceptable.
-- Does Form survive the gate on flat graphics? If not, fold it into Shape.
+- Prompt quality for abstract sub-classes (Implied line, Convergence, Progressive rhythm).
+- Does Form work on flat graphics? If not, fold it into Shape.
 - Image sourcing and rights for the demo set (your own collection, public-domain art, or links rather than rehosting).
 
 ## Success Criteria
 
 - ≥150 images stored in Supabase (files in Storage, rows in `images`) and scored.
-- ≥6 categories pass the ≥75% agreement gate.
+- The taxonomy produces useful, stable clusters across the reference set.
 - Switching filters animates smoothly (≥45 fps with 150 thumbnails).
 - (Stretch) A new upload appears in the graph in under 5 seconds.
 - A judge can explain the layout back after 30 seconds: "jagged ones are over there, curvy ones over here."
@@ -220,13 +208,12 @@ Hackathon demo runs locally (Next.js dev server + FastAPI on the laptop). Supaba
 2. Write `seed/taxonomy.yaml` (definitions + 3–5 SigLIP prompts per sub-class).
 3. Build `pixel.py` first. It's deterministic and testable on 5 images.
 4. Add SigLIP scoring + normalization, run `batch.py` on the full set.
-5. Hand-label 50 images, run `validate.py`.
-6. Build the graph view. Hit the hour-25 checkpoint.
-7. Polish + corrections. Add `/upload` only if ahead of schedule.
+5. Build the graph view. Hit the hour-25 checkpoint.
+6. Polish. Add `/upload` only if ahead of schedule.
 
 ## The Assignment
 
-Before writing any code: **collect 150 images and hand-label 20 of them** across Line, Value, Color and Balance in a spreadsheet. That forces the taxonomy definitions to be concrete, and the labels become the first validation set.
+Before writing any code: **collect 150 varied images** across Line, Value, Color and Balance. That forces the taxonomy definitions to be concrete.
 
 ## What I noticed about how you think
 

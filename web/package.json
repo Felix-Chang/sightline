@@ -11,7 +11,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
     "d3-force": "^3.0.0",
-    "next": "15.5.28",
+    "next": "^16.4.2",
     "pixi.js": "8",
     "react": "19.1.0",
     "react-dom": "19.1.0"
@@ -24,7 +24,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "15.5.28",
+    "eslint-config-next": "^16.4.2",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

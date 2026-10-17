@@ -2,21 +2,28 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { loadDataset, saveCorrection, type Category, type Dataset, type ImageNode, type Label, type Subclass } from "@/lib/data";
+import { loadDataset, type Category, type Dataset, type ImageNode, type Subclass } from "@/lib/data";
 import { anchorsFor, knnLinks, targetsFor, umapTargets } from "@/lib/layout";
 import type { GraphLayout } from "@/lib/graph-engine";
 
 const Graph = dynamic(() => import("./Graph"), { ssr: false });
 
 const ALL = "__all";
+const DEFAULT_FOCUS = 4.5; // Exact center of the slider range [1, 8]
 
 export default function Explorer() {
   const [data, setData] = useState<Dataset | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string>(ALL);
-  const [focus, setFocus] = useState(3);
+  const [focus, setFocus] = useState(DEFAULT_FOCUS);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // The only way the category changes, so it also resets the slider to the middle.
+  const selectCategory = useCallback((id: string) => {
+    setCategoryId(id);
+    setFocus(DEFAULT_FOCUS);
+  }, []);
 
   useEffect(() => {
     loadDataset().then(setData).catch((e) => setError(String(e.message ?? e)));
@@ -57,12 +64,12 @@ export default function Explorer() {
       if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
         const i = ids.indexOf(categoryId);
         const next = (i + (e.key === "ArrowRight" ? 1 : ids.length - 1)) % ids.length;
-        setCategoryId(ids[next]);
+        selectCategory(ids[next]);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [categories, categoryId]);
+  }, [categories, categoryId, selectCategory]);
 
   const detailId = selectedId ?? hoveredId;
   const detail = data?.images.find((i) => i.id === detailId) ?? null;
@@ -104,9 +111,9 @@ export default function Explorer() {
 
           <Eyebrow className="mt-5">Filter</Eyebrow>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <FilterPill active={categoryId === ALL} onClick={() => setCategoryId(ALL)}>None</FilterPill>
+            <FilterPill active={categoryId === ALL} onClick={() => selectCategory(ALL)}>None</FilterPill>
             {categories.map((c) => (
-              <FilterPill key={c.id} active={c.id === categoryId} onClick={() => setCategoryId(c.id)}>{c.name}</FilterPill>
+              <FilterPill key={c.id} active={c.id === categoryId} onClick={() => selectCategory(c.id)}>{c.name}</FilterPill>
             ))}
           </div>
         </div>
@@ -117,9 +124,18 @@ export default function Explorer() {
       {/* Focus slider */}
       {category && (
         <div className={`absolute bottom-4 left-4 flex items-center gap-3 ${CARD} px-4 py-2.5 font-label text-[11px] text-muted`}>
-          <label htmlFor="focus">Blend</label>
-          <input id="focus" type="range" min={1} max={8} step={0.5} value={focus} onChange={(e) => setFocus(Number(e.target.value))} className="w-28 accent-accent" />
-          <span>Separate</span>
+          <label htmlFor="focus">Separate</label>
+          <input
+            id="focus"
+            type="range"
+            min={1}
+            max={8}
+            step={0.5}
+            value={9 - focus}
+            onChange={(e) => setFocus(9 - Number(e.target.value))}
+            className="w-28 cursor-pointer accent-accent"
+          />
+          <span>Blend</span>
         </div>
       )}
 
@@ -212,18 +228,6 @@ function DetailCard({ image, pinned, categories, subsByCat, onClose }: {
   subsByCat: Map<string, Subclass[]>;
   onClose: () => void;
 }) {
-  const [saved, setSaved] = useState<Record<string, Label>>({});
-  const [err, setErr] = useState<string | null>(null);
-
-  const correct = async (sid: string, label: Label) => {
-    try {
-      await saveCorrection(image.id, sid, label);
-      setSaved((s) => ({ ...s, [sid]: label }));
-    } catch (e) {
-      setErr(String((e as Error).message));
-    }
-  };
-
   return (
     <aside className={`absolute right-4 top-4 flex max-h-[calc(100dvh-2rem)] w-[min(340px,calc(100vw-2rem))] flex-col overflow-hidden ${CARD}`}>
       <div className="border-b border-border bg-canvas p-3">
@@ -235,8 +239,6 @@ function DetailCard({ image, pinned, categories, subsByCat, onClose }: {
           <p className="truncate font-mono text-[11px] text-muted">{image.filename}</p>
           {pinned && <button onClick={onClose} className="text-xs text-muted hover:text-fg" aria-label="Close">✕</button>}
         </div>
-        {!pinned && <p className="mt-1 text-[11px] text-muted">Click the image to pin it and correct scores.</p>}
-
         {categories.map((c) => (
           <div key={c.id} className="mt-5">
             <p className="font-serif text-base font-semibold">{c.name}</p>
@@ -252,28 +254,12 @@ function DetailCard({ image, pinned, categories, subsByCat, onClose }: {
                       </div>
                       <span className="w-8 text-right font-label text-[11px] tabular-nums text-muted">{Math.round(v * 100)}</span>
                     </div>
-                    {pinned && (
-                      <div className="mt-1 flex gap-1 pl-[7.5rem]">
-                        {(["absent", "present", "dominant"] as Label[]).map((l) => (
-                          <button
-                            key={l}
-                            onClick={() => correct(s.id, l)}
-                            className={`rounded-full border px-2 py-px font-label text-[10px] ${
-                              saved[s.id] === l ? "border-accent bg-accent text-surface" : "border-border text-muted hover:border-fg/40 hover:text-fg"
-                            }`}
-                          >
-                            {l}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </li>
                 );
               })}
             </ul>
           </div>
         ))}
-        {err && <p className="mt-3 text-xs text-accent">{err}</p>}
       </div>
     </aside>
   );

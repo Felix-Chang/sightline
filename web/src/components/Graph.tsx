@@ -16,8 +16,11 @@ export default function Graph({ images, layout, selectedId, onHover, onSelect }:
   const hostRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<GraphEngine | null>(null);
   const readyRef = useRef<Promise<void> | null>(null);
+  // Latest callbacks for the engine, which is created once; refreshed after each render.
   const handlers = useRef({ onHover, onSelect });
-  handlers.current = { onHover, onSelect };
+  useEffect(() => {
+    handlers.current = { onHover, onSelect };
+  }, [onHover, onSelect]);
 
   useEffect(() => {
     const engine = new GraphEngine(

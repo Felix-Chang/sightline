@@ -1,4 +1,4 @@
--- SightLine schema: taxonomy (seeded), images + scores (pipeline), corrections (you).
+-- SightLine schema: taxonomy (seeded), images + scores (pipeline).
 create extension if not exists vector;
 
 -- Taxonomy -------------------------------------------------------------------
@@ -8,7 +8,7 @@ create table categories (
   name text not null,
   kind text not null check (kind in ('spectrum', 'tags')),
   description text,
-  enabled boolean not null default true, -- validate.py turns off categories that fail the gate
+  enabled boolean not null default true,
   sort int not null default 0
 );
 
@@ -49,15 +49,6 @@ create table scores (
 );
 create index scores_source_idx on scores (source, subclass_id);
 
-create table corrections (
-  id bigserial primary key,
-  image_id uuid not null references images on delete cascade,
-  subclass_id text not null references subclasses on delete cascade,
-  label text not null check (label in ('absent', 'present', 'dominant')),
-  origin text not null default 'ui' check (origin in ('ui', 'handlabel')),
-  created_at timestamptz not null default now()
-);
-
 create index images_siglip_idx on images using hnsw (siglip vector_cosine_ops);
 create index images_dino_idx on images using hnsw (dino vector_cosine_ops);
 
@@ -73,20 +64,17 @@ language sql stable as $$
   limit k;
 $$;
 
--- Access: the browser (anon) reads everything and may add corrections.
+-- Access: the browser (anon) can read all visual-reference data.
 -- The Python pipeline uses the service role, which bypasses RLS.
 alter table categories enable row level security;
 alter table subclasses enable row level security;
 alter table images enable row level security;
 alter table scores enable row level security;
-alter table corrections enable row level security;
 
 create policy "public read" on categories for select using (true);
 create policy "public read" on subclasses for select using (true);
 create policy "public read" on images for select using (true);
 create policy "public read" on scores for select using (true);
-create policy "public read" on corrections for select using (true);
-create policy "public insert" on corrections for insert with check (true);
 
 -- Storage bucket for originals and thumbnails.
 insert into storage.buckets (id, name, public)
