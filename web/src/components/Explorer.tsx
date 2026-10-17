@@ -220,25 +220,12 @@ function CategoryCard({ category, subs }: { category: Category; subs: Subclass[]
             <div className="flex items-center gap-2">
               <span className="w-4 shrink-0 font-label text-[10px] tabular-nums text-muted">{String(i + 1).padStart(2, "0")}</span>
               <span className="font-medium uppercase tracking-[0.08em] text-fg">{s.name}</span>
-              <MethodBadge sub={s} />
             </div>
             <p className="mt-0.5 pl-6 text-muted">{s.definition}</p>
           </li>
         ))}
       </ul>
     </div>
-  );
-}
-
-function MethodBadge({ sub }: { sub: Subclass }) {
-  const measured = sub.pixel_weight > 0;
-  return (
-    <span
-      title={measured ? `${Math.round(sub.pixel_weight * 100)}% pixel math, rest SigLIP` : "Scored by SigLIP only"}
-      className="ml-auto rounded-full border border-border px-2 py-px font-label text-[10px] text-muted"
-    >
-      {measured ? "measured" : "perceived"}
-    </span>
   );
 }
 
