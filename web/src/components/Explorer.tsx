@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { loadDataset, saveCorrection, type Category, type Dataset, type ImageNode, type Label, type Subclass } from "@/lib/data";
+import { loadDataset, type Category, type Dataset, type ImageNode, type Subclass } from "@/lib/data";
 import { anchorsFor, knnLinks, targetsFor, umapTargets } from "@/lib/layout";
 import type { GraphLayout } from "@/lib/graph-engine";
 
@@ -215,18 +215,6 @@ function DetailCard({ image, pinned, categories, subsByCat, onClose }: {
   subsByCat: Map<string, Subclass[]>;
   onClose: () => void;
 }) {
-  const [saved, setSaved] = useState<Record<string, Label>>({});
-  const [err, setErr] = useState<string | null>(null);
-
-  const correct = async (sid: string, label: Label) => {
-    try {
-      await saveCorrection(image.id, sid, label);
-      setSaved((s) => ({ ...s, [sid]: label }));
-    } catch (e) {
-      setErr(String((e as Error).message));
-    }
-  };
-
   return (
     <aside className={`absolute right-4 top-4 flex max-h-[calc(100dvh-2rem)] w-[min(340px,calc(100vw-2rem))] flex-col overflow-hidden ${CARD}`}>
       <div className="border-b border-border bg-canvas p-3">
@@ -238,8 +226,6 @@ function DetailCard({ image, pinned, categories, subsByCat, onClose }: {
           <p className="truncate font-mono text-[11px] text-muted">{image.filename}</p>
           {pinned && <button onClick={onClose} className="text-xs text-muted hover:text-fg" aria-label="Close">✕</button>}
         </div>
-        {!pinned && <p className="mt-1 text-[11px] text-muted">Click the image to pin it and correct scores.</p>}
-
         {categories.map((c) => (
           <div key={c.id} className="mt-5">
             <p className="font-serif text-base">{c.name}</p>
@@ -255,28 +241,12 @@ function DetailCard({ image, pinned, categories, subsByCat, onClose }: {
                       </div>
                       <span className="w-8 text-right font-mono text-[11px] text-muted">{Math.round(v * 100)}</span>
                     </div>
-                    {pinned && (
-                      <div className="mt-1 flex gap-1 pl-[7.5rem]">
-                        {(["absent", "present", "dominant"] as Label[]).map((l) => (
-                          <button
-                            key={l}
-                            onClick={() => correct(s.id, l)}
-                            className={`rounded-full border px-2 py-px font-mono text-[10px] ${
-                              saved[s.id] === l ? "border-accent bg-accent text-surface" : "border-border text-muted hover:border-fg/40 hover:text-fg"
-                            }`}
-                          >
-                            {l}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </li>
                 );
               })}
             </ul>
           </div>
         ))}
-        {err && <p className="mt-3 text-xs text-accent">{err}</p>}
       </div>
     </aside>
   );

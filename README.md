@@ -16,11 +16,11 @@ Design rationale: [DESIGN.md](DESIGN.md).
   ┌───────────┐  │  Storage bucket "images"        Postgres + pgvector                Auto-generated REST API   │
   │ data/     │  │  originals/…  thumbs/…          categories, subclasses (taxonomy)   /rest/v1/<table>         │
   │  images/  │──┼─▶ (files)                        images (metrics, embeddings)        /rest/v1/rpc/<function>  │
-  └───────────┘  │                                 scores, corrections                 /storage/v1/object/…     │
+  └───────────┘  │                                 scores                             /storage/v1/object/…     │
    pipeline/     │                                                                                               │
    batch.py ─────┼── writes with the SERVICE ROLE key (secret)                                                   │
                  └───────────────────────────────────────────────────────────────▲───────────────────────────────┘
-                                                                                 │ reads + corrections
+                                                                                 │ reads
                                                                                  │ with the ANON key (public)
                                                                     web/ (Next.js + PixiJS + d3-force)
                                                                     runs on each teammate's machine
@@ -84,7 +84,7 @@ Open **http://localhost:3000**.
 
 **It worked if** you see the SightLine panel with "N references" and thumbnails. If it says *No images yet*, the app is fine; nobody has added images yet.
 
-The anon key is safe to share in team chat: it can only read and add corrections. `npm install` may warn that `unrs-resolver` install scripts were blocked (npm 12+). Ignore that; lint and build work without it.
+The anon key is safe to share in team chat: it can only read public visual-reference data. `npm install` may warn that `unrs-resolver` install scripts were blocked (npm 12+). Ignore that; lint and build work without it.
 
 ### B. Add images (curators)
 
@@ -172,14 +172,12 @@ For each image, `batch.py` calls `Scorer.ingest()` in `pipeline/score_image.py`:
 
 **Why combine is collection-wide:** raw numbers live on different scales (brightness 0–1, cosine similarity ~0.05–0.15). Each raw score is converted to a **percentile across all images**, so "0.9 contrast" means "more contrast than 90% of the collection". Then the pixel and SigLIP percentiles are blended using each subclass's `weight` in `taxonomy.yaml`: 1.0 = pure pixel math, 0 = pure SigLIP. Because it's relative, every new batch reruns it for all images.
 
-**Validation gate** (`validate.py`): you hand-label a sample (`absent / present / dominant`). For each subclass it measures agreement as AUC (0.5 = coin flip, 1.0 = perfect), and categories averaging ≥ 0.75 stay visible in the app. See *Hand labels* below.
-
 ### What the models do
 
 There's **no LLM and no text generation** anywhere. Both models turn an image into a list of numbers (an embedding).
 
 - **SigLIP 2** (`google/siglip2-so400m-patch14-384`, by Google) was trained on hundreds of millions of image + caption pairs, so images and sentences land in the *same* number space. We embed each subclass's prompts once (e.g. Line → Jagged: *"a graphic made of sharp zigzag lines"*), then score an image by how close its embedding is to those prompt embeddings. This lets us detect perceptual qualities ("implied line", "swirling movement") that pixel math can't, **without training anything**. Editing the prompts in `taxonomy.yaml` changes what it looks for.
-- **DINOv2** (`facebook/dinov2-base`, by Meta) is image-only and self-supervised, and it's strong on structure and composition. It doesn't produce scores yet. It's stored so we can (a) find "structurally similar" neighbors via `match_images`, and (b) later train small per-subclass classifiers ("probes") on your corrections, so SightLine learns your eye.
+- **DINOv2** (`facebook/dinov2-base`, by Meta) is image-only and self-supervised, and it's strong on structure and composition. It doesn't produce scores yet. It's stored so we can find "structurally similar" neighbors via `match_images`.
 - **Pixel math** (`pixel.py`, OpenCV + numpy) isn't a model. It's deterministic arithmetic and always gives the same answer, so it's used wherever a quality is directly measurable (brightness, color temperature, symmetry, texture).
 
 Models run locally (Apple Silicon GPU via MPS, CUDA, or CPU). Nothing is sent to an AI API.
@@ -207,31 +205,15 @@ curl "$URL/rest/v1/subclasses?select=id,name,definition&category_id=eq.color" -H
 curl -X POST "$URL/rest/v1/rpc/match_images" -H "apikey: $KEY" -H "Content-Type: application/json" \
   -d '{"query_id": "<image uuid>", "space": "dino", "k": 12}'
 
-# add a correction (the only write the anon key allows)
-curl -X POST "$URL/rest/v1/corrections" -H "apikey: $KEY" -H "Content-Type: application/json" \
-  -d '{"image_id": "<uuid>", "subclass_id": "line.jagged", "label": "dominant"}'
-
 # image files are public URLs
 $URL/storage/v1/object/public/images/<thumb_path>
 ```
 
 What's **not** an API yet: scoring. Analyzing an image needs the Python models, so it only happens through `batch.py`. The stretch goal in DESIGN.md is a small FastAPI `/upload` endpoint (`pipeline/server.py`) that calls the same `Scorer.ingest()`.
 
-**Permissions** (row-level security, see `supabase/migrations/`): anon can read every table and insert into `corrections`. Everything else needs the service role key. Corrections are open to anyone who has the anon key, which is fine for a hackathon. Add auth before sharing the URL publicly.
+**Permissions** (row-level security, see `supabase/migrations/`): anon can read every table. Everything else needs the service role key.
 
 ---
-
-## Hand labels → validation gate
-
-```bash
-# data/labels.csv: filename,subclass_id,label   (label = absent | present | dominant)
-#   poster_01.jpg,line.jagged,dominant
-#   poster_01.jpg,value.high_key,absent
-uv run python pipeline/validate.py --labels data/labels.csv --dry-run   # report only
-uv run python pipeline/validate.py --labels data/labels.csv             # also turn categories on/off
-```
-
-Subclass ids are `category.subclass` from the YAML. Labels made in the app (pin an image → absent/present/dominant) land in the same `corrections` table, so `validate.py` with no `--labels` re-evaluates using everything collected. Each subclass needs ≥ 6 labels with at least one positive and one negative.
 
 ## Using the app
 
@@ -239,13 +221,13 @@ Subclass ids are `category.subclass` from the YAML. Labels made in the app (pin 
 - **Filter pills**: the category's subclasses become anchors (a ring, or a left–right axis for spectrums like Value), and each image is pulled toward anchors in proportion to its scores. Red threads connect anchors to images that strongly have that quality.
 - **Blend ↔ Separate**: how strongly images commit to their strongest quality.
 - **measured / perceived** badges: whether a subclass uses pixel math or only SigLIP.
-- Hover for scores. Click to pin and correct. Scroll to zoom, drag to pan, ← → to switch filters, Esc to unpin.
+- Hover for scores. Click to pin. Scroll to zoom, drag to pan, ← → to switch filters, Esc to unpin.
 
 ## Repo map
 
 ```
 seed/taxonomy.yaml        categories, subclasses, prompts, pixel metric + weight
-pipeline/                 Python: pixel.py, models.py, score_image.py, batch.py, combine.py, validate.py, db.py
+pipeline/                 Python: pixel.py, models.py, score_image.py, batch.py, combine.py, db.py
 supabase/migrations/      schema, RLS policies, storage bucket, match_images()
 web/src/lib/              data.ts (Supabase queries), layout.ts (anchor/UMAP/kNN math), graph-engine.ts (PixiJS + d3-force)
 web/src/components/       Explorer.tsx (UI), Graph.tsx (canvas wrapper)
