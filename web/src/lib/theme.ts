@@ -29,3 +29,6 @@ export const anchorColor = (i: number) => anchorPalette[i % anchorPalette.length
 export const anchorHex = (i: number) => `#${anchorColor(i).toString(16).padStart(6, "0")}`;
 
 export const canvasHex = "#efeee9";
+
+/** Filter-change ASCII pulse: a warm gray that reads briefly, then fades. */
+export const asciiInkHex = "#b8b3a6";

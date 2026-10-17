@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { AsciiPulse } from "@/lib/ascii-pulse";
 import type { ImageNode } from "@/lib/data";
 import { GraphEngine, type GraphLayout } from "@/lib/graph-engine";
+import { asciiInkHex } from "@/lib/theme";
 
 type Props = {
   images: ImageNode[];
@@ -14,8 +16,12 @@ type Props = {
 
 export default function Graph({ images, layout, selectedId, onHover, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const pulseCanvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GraphEngine | null>(null);
+  const pulseRef = useRef<AsciiPulse | null>(null);
   const readyRef = useRef<Promise<void> | null>(null);
+  // Which filter's anchors are on screen; the pulse fires only when this changes.
+  const anchorKeyRef = useRef<string | null>(null);
   // Latest callbacks for the engine, which is created once; refreshed after each render.
   const handlers = useRef({ onHover, onSelect });
   useEffect(() => {
@@ -29,9 +35,18 @@ export default function Graph({ images, layout, selectedId, onHover, onSelect }:
       (id) => handlers.current.onSelect(id),
     );
     engineRef.current = engine;
-    readyRef.current = engine.init();
+    readyRef.current = engine.init().then(() => {
+      if (engineRef.current !== engine || !pulseCanvasRef.current) return; // unmounted while Pixi was starting
+      // The pulse reads where thumbnails, anchors and labels are so the ring passes behind them.
+      const pulse = new AsciiPulse(pulseCanvasRef.current, asciiInkHex);
+      pulseRef.current = pulse;
+      engine.onView((points, width, height) => pulse.update(points, width, height));
+    });
     return () => {
+      engine.onView(null);
       engine.destroy();
+      pulseRef.current?.destroy();
+      pulseRef.current = null;
       engineRef.current = null;
     };
   }, []);
@@ -41,12 +56,35 @@ export default function Graph({ images, layout, selectedId, onHover, onSelect }:
   }, [images]);
 
   useEffect(() => {
-    readyRef.current?.then(() => engineRef.current?.applyLayout(layout));
+    readyRef.current?.then(() => {
+      const engine = engineRef.current;
+      if (!engine) return;
+      engine.applyLayout(layout);
+      // The layout also changes while the Separate/Blend slider drags, so key the pulse on the
+      // anchor set (it changes exactly when the filter does) and skip the very first layout.
+      const key = layout.anchors.map((a) => a.id).join("|");
+      if (anchorKeyRef.current !== null && anchorKeyRef.current !== key) {
+        const c = engine.centerOnScreen();
+        pulseRef.current?.pulse(c.x, c.y);
+      }
+      anchorKeyRef.current = key;
+    });
   }, [layout]);
 
   useEffect(() => {
     readyRef.current?.then(() => engineRef.current?.setSelected(selectedId));
   }, [selectedId]);
 
-  return <div ref={hostRef} className="absolute inset-0" />;
+  return (
+    // The pulse canvas floats over Pixi's opaque canvas (which Pixi appends here) and multiplies
+    // into it: gray glyphs only darken the paper, so lines and thumbnails look exactly as without it.
+    // `isolate` keeps the blend inside this box, so it never touches the panels above.
+    <div ref={hostRef} className="absolute inset-0 isolate">
+      <canvas
+        ref={pulseCanvasRef}
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-10 h-full w-full opacity-70 mix-blend-multiply"
+      />
+    </div>
+  );
 }

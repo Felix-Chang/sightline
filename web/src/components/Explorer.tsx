@@ -2,7 +2,13 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { loadDataset, type Category, type Dataset, type ImageNode, type Subclass } from "@/lib/data";
+import {
+  loadDataset,
+  type Category,
+  type Dataset,
+  type ImageNode,
+  type Subclass,
+} from "@/lib/data";
 import { anchorsFor, knnLinks, targetsFor, umapTargets } from "@/lib/layout";
 import type { GraphLayout } from "@/lib/graph-engine";
 import { anchorHex } from "@/lib/theme";
@@ -46,10 +52,15 @@ export default function Explorer() {
   }, []);
 
   useEffect(() => {
-    loadDataset().then(setData).catch((e) => setError(String(e.message ?? e)));
+    loadDataset()
+      .then(setData)
+      .catch((e) => setError(String(e.message ?? e)));
   }, []);
 
-  const categories = useMemo(() => (data?.categories ?? []).filter((c) => c.enabled), [data]);
+  const categories = useMemo(
+    () => (data?.categories ?? []).filter((c) => c.enabled),
+    [data],
+  );
   const subsByCat = useMemo(() => {
     const m = new Map<string, Subclass[]>();
     for (const s of data?.subclasses ?? []) {
@@ -59,18 +70,42 @@ export default function Explorer() {
     return m;
   }, [data]);
 
-  const category = useMemo(() => categories.find((c) => c.id === categoryId) ?? null, [categories, categoryId]);
+  const category = useMemo(
+    () => categories.find((c) => c.id === categoryId) ?? null,
+    [categories, categoryId],
+  );
   // Stable reference: a new array here would rebuild the layout (and restart physics) on every hover.
-  const subs = useMemo(() => (category ? subsByCat.get(category.id) ?? [] : []), [category, subsByCat]);
+  const subs = useMemo(
+    () => (category ? (subsByCat.get(category.id) ?? []) : []),
+    [category, subsByCat],
+  );
 
   const layout: GraphLayout = useMemo(() => {
     const images = data?.images ?? [];
     if (!category) {
-      const enabledSubs = categories.flatMap((c) => (subsByCat.get(c.id) ?? []).map((s) => s.id));
-      return { anchors: [], targets: umapTargets(images), links: knnLinks(images, enabledSubs, 2), ring: false, showLinks: true };
+      const enabledSubs = categories.flatMap((c) =>
+        (subsByCat.get(c.id) ?? []).map((s) => s.id),
+      );
+      return {
+        anchors: [],
+        targets: umapTargets(images),
+        links: knnLinks(images, enabledSubs, 2),
+        ring: false,
+        showLinks: true,
+      };
     }
     const anchors = anchorsFor(subs);
-    return { anchors, targets: targetsFor(images, anchors, focus), links: knnLinks(images, subs.map((s) => s.id), 3), ring: true, showLinks: false };
+    return {
+      anchors,
+      targets: targetsFor(images, anchors, focus),
+      links: knnLinks(
+        images,
+        subs.map((s) => s.id),
+        3,
+      ),
+      ring: true,
+      showLinks: false,
+    };
   }, [data, category, categories, subs, subsByCat, focus]);
 
   const onSelect = useCallback((id: string | null) => setSelectedId(id), []);
@@ -83,7 +118,8 @@ export default function Explorer() {
       if (e.key === "Escape") setSelectedId(null);
       if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
         const i = ids.indexOf(categoryId);
-        const next = (i + (e.key === "ArrowRight" ? 1 : ids.length - 1)) % ids.length;
+        const next =
+          (i + (e.key === "ArrowRight" ? 1 : ids.length - 1)) % ids.length;
         selectCategory(ids[next]);
       }
     };
@@ -97,43 +133,82 @@ export default function Explorer() {
   if (error) {
     return (
       <Centered>
-        <p className="font-serif text-2xl font-bold">Couldn&apos;t load references</p>
+        <p className="font-serif text-2xl font-bold">
+          Couldn&apos;t load references
+        </p>
         <p className="mt-2 max-w-md font-label text-xs text-accent">{error}</p>
         <p className="mt-3 max-w-md text-sm text-muted">
-          Check the anon key in <code className="font-mono text-fg">web/.env.local</code> and restart <code className="font-mono text-fg">npm run dev</code>.
-          If it worked before, the Supabase project may be paused. See Troubleshooting in the README.
+          Check the anon key in{" "}
+          <code className="font-mono text-fg">web/.env.local</code> and restart{" "}
+          <code className="font-mono text-fg">npm run dev</code>. If it worked
+          before, the Supabase project may be paused. See Troubleshooting in the
+          README.
         </p>
       </Centered>
     );
   }
-  if (!data) return <Centered><p className="font-label text-sm text-muted">Loading references…</p></Centered>;
+  if (!data)
+    return (
+      <Centered>
+        <p className="font-label text-sm text-muted">Loading references…</p>
+      </Centered>
+    );
   if (data.images.length === 0) {
     return (
       <Centered>
         <p className="font-serif text-2xl font-bold">No images yet</p>
-        <p className="mt-2 text-sm text-muted">Run <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-fg">uv run python pipeline/batch.py data/images</code> to add some.</p>
+        <p className="mt-2 text-sm text-muted">
+          Run{" "}
+          <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-fg">
+            uv run python pipeline/batch.py data/images
+          </code>{" "}
+          to add some.
+        </p>
       </Centered>
     );
   }
 
   return (
     <main className="relative h-dvh w-full select-none">
-      <Graph images={data.images} layout={layout} selectedId={selectedId} onHover={onHover} onSelect={onSelect} />
+      <Graph
+        images={data.images}
+        layout={layout}
+        selectedId={selectedId}
+        onHover={onHover}
+        onSelect={onSelect}
+      />
 
       {/* Title + filter card */}
       <section className="pointer-events-none absolute left-4 top-4 max-h-[calc(100dvh-5rem)] w-[min(360px,calc(100vw-2rem))] space-y-3 overflow-y-auto">
         <div className={`pointer-events-auto ${CARD} p-5`}>
           <div className="flex items-baseline justify-between">
-            <h1 className="font-serif text-[28px] font-bold leading-none tracking-tight">SightLine</h1>
-            <span className="font-label text-[11px] text-muted">{data.images.length} refs</span>
+            <h1 className="font-serif text-[28px] font-bold leading-none tracking-tight">
+              SightLine
+            </h1>
+            <span className="font-label text-[11px] text-muted">
+              {data.images.length} refs
+            </span>
           </div>
-          <p className="mt-2 text-xs text-muted">References sorted by visual language, not subject.</p>
+          <p className="mt-2 text-xs text-muted">
+            References sorted by visual language, not subject.
+          </p>
 
           <Eyebrow className="mt-5">Filter</Eyebrow>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <FilterPill active={categoryId === ALL} onClick={() => selectCategory(ALL)}>None</FilterPill>
+            <FilterPill
+              active={categoryId === ALL}
+              onClick={() => selectCategory(ALL)}
+            >
+              None
+            </FilterPill>
             {categories.map((c) => (
-              <FilterPill key={c.id} active={c.id === categoryId} onClick={() => selectCategory(c.id)}>{c.name}</FilterPill>
+              <FilterPill
+                key={c.id}
+                active={c.id === categoryId}
+                onClick={() => selectCategory(c.id)}
+              >
+                {c.name}
+              </FilterPill>
             ))}
           </div>
         </div>
@@ -143,7 +218,9 @@ export default function Explorer() {
 
       {/* Focus slider */}
       {category && (
-        <div className={`absolute bottom-4 left-4 flex items-center gap-3 ${CARD} px-4 py-2.5 font-label text-[11px] text-muted`}>
+        <div
+          className={`absolute bottom-4 left-4 flex items-center gap-3 ${CARD} px-4 py-2.5 font-label text-[11px] text-muted`}
+        >
           <label htmlFor="focus">Separate</label>
           <input
             id="focus"
@@ -159,8 +236,11 @@ export default function Explorer() {
         </div>
       )}
 
-      <p className="absolute bottom-5 right-5 hidden font-label text-[11px] text-muted md:block">
-        scroll to zoom · drag to pan · ← → filters
+      {/* Carded like the slider so the background texture never runs through the text. */}
+      <p
+        className={`absolute bottom-4 right-4 hidden ${CARD} px-4 py-2.5 font-label text-[11px] text-muted md:block`}
+      >
+        scroll to zoom · drag to pan · ← → to change filters
       </p>
 
       {detail && (
@@ -179,28 +259,51 @@ export default function Explorer() {
 }
 
 // Shared card look: white sheet, hairline border, soft paper shadow (like the reel's light frames).
-const CARD = "rounded-2xl border border-border bg-surface/95 shadow-[0_1px_2px_rgba(28,28,26,0.06),0_8px_24px_rgba(28,28,26,0.06)] backdrop-blur";
+const CARD =
+  "rounded-2xl border border-border bg-surface/95 shadow-[0_1px_2px_rgba(28,28,26,0.06),0_8px_24px_rgba(28,28,26,0.06)] backdrop-blur";
 
 function Centered({ children }: { children: React.ReactNode }) {
-  return <main className="flex h-dvh flex-col items-center justify-center px-4 text-center">{children}</main>;
+  return (
+    <main className="flex h-dvh flex-col items-center justify-center px-4 text-center">
+      {children}
+    </main>
+  );
 }
 
 /** Monospace section label, e.g. "FILTER". */
-function Eyebrow({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function Eyebrow({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <p className={`font-label text-[11px] uppercase tracking-[0.14em] text-accent ${className}`}>
+    <p
+      className={`font-label text-[11px] uppercase tracking-[0.14em] text-accent ${className}`}
+    >
       {children}
     </p>
   );
 }
 
-function FilterPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function FilterPill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       onClick={onClick}
       aria-pressed={active}
       className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-        active ? "border-fg bg-fg text-surface" : "border-border bg-surface text-fg hover:border-fg/40"
+        active
+          ? "border-fg bg-fg text-surface"
+          : "border-border bg-surface text-fg hover:border-fg/40"
       }`}
     >
       {children}
@@ -208,18 +311,32 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
   );
 }
 
-function CategoryCard({ category, subs }: { category: Category; subs: Subclass[] }) {
+function CategoryCard({
+  category,
+  subs,
+}: {
+  category: Category;
+  subs: Subclass[];
+}) {
   return (
     <div className={`pointer-events-auto ${CARD} p-5`}>
-      <h2 className="font-serif text-[26px] font-bold leading-tight">{category.name}</h2>
-      {category.description && <p className="mt-1 text-xs text-muted">{category.description}</p>}
+      <h2 className="font-serif text-[26px] font-bold leading-tight">
+        {category.name}
+      </h2>
+      {category.description && (
+        <p className="mt-1 text-xs text-muted">{category.description}</p>
+      )}
       <Eyebrow className="mt-5">Type</Eyebrow>
       <ul className="mt-2 divide-y divide-border border-t border-border">
         {subs.map((s, i) => (
           <li key={s.id} className="py-2.5 text-xs">
             <div className="flex items-center gap-2">
-              <span className="w-4 shrink-0 font-label text-[10px] tabular-nums text-muted">{String(i + 1).padStart(2, "0")}</span>
-              <span className="font-medium uppercase tracking-[0.08em] text-fg">{s.name}</span>
+              <span className="w-4 shrink-0 font-label text-[10px] tabular-nums text-muted">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <span className="font-medium uppercase tracking-[0.08em] text-fg">
+                {s.name}
+              </span>
               <MethodBadge sub={s} />
             </div>
             <p className="mt-0.5 pl-6 text-muted">{s.definition}</p>
@@ -234,7 +351,11 @@ function MethodBadge({ sub }: { sub: Subclass }) {
   const measured = sub.pixel_weight > 0;
   return (
     <span
-      title={measured ? `${Math.round(sub.pixel_weight * 100)}% pixel math, rest SigLIP` : "Scored by SigLIP only"}
+      title={
+        measured
+          ? `${Math.round(sub.pixel_weight * 100)}% pixel math, rest SigLIP`
+          : "Scored by SigLIP only"
+      }
       className="ml-auto rounded-full border border-border px-2 py-px font-label text-[10px] text-muted"
     >
       {measured ? "measured" : "perceived"}
@@ -242,7 +363,14 @@ function MethodBadge({ sub }: { sub: Subclass }) {
   );
 }
 
-function DetailCard({ image, pinned, categories, filtered, subsByCat, onClose }: {
+function DetailCard({
+  image,
+  pinned,
+  categories,
+  filtered,
+  subsByCat,
+  onClose,
+}: {
   image: ImageNode;
   pinned: boolean;
   categories: Category[];
@@ -251,15 +379,31 @@ function DetailCard({ image, pinned, categories, filtered, subsByCat, onClose }:
   onClose: () => void;
 }) {
   return (
-    <aside className={`absolute right-4 top-4 flex max-h-[calc(100dvh-2rem)] w-[min(340px,calc(100vw-2rem))] flex-col overflow-hidden ${CARD}`}>
+    <aside
+      className={`absolute right-4 top-4 flex max-h-[calc(100dvh-2rem)] w-[min(340px,calc(100vw-2rem))] flex-col overflow-hidden ${CARD}`}
+    >
       <div className="border-b border-border bg-canvas p-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={image.fullUrl} alt={image.filename ?? "reference"} className="mx-auto max-h-60 object-contain shadow-sm" />
+        <img
+          src={image.fullUrl}
+          alt={image.filename ?? "reference"}
+          className="mx-auto max-h-60 object-contain shadow-sm"
+        />
       </div>
       <div className="overflow-y-auto p-5">
         <div className="flex items-start justify-between gap-2">
-          <p className="truncate font-mono text-[11px] text-muted">{image.filename}</p>
-          {pinned && <button onClick={onClose} className="text-xs text-muted hover:text-fg" aria-label="Close">✕</button>}
+          <p className="truncate font-mono text-[11px] text-muted">
+            {image.filename}
+          </p>
+          {pinned && (
+            <button
+              onClick={onClose}
+              className="text-xs text-muted hover:text-fg"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          )}
         </div>
         {categories.map((c) => (
           <div key={c.id} className="mt-5">
@@ -270,11 +414,23 @@ function DetailCard({ image, pinned, categories, filtered, subsByCat, onClose }:
                 return (
                   <li key={s.id}>
                     <div className="flex items-center gap-2 text-xs">
-                      <span className="w-28 shrink-0 truncate font-serif">{s.name}</span>
+                      <span className="w-28 shrink-0 truncate font-serif">
+                        {s.name}
+                      </span>
                       <div className="h-1 flex-1 rounded-full bg-border">
-                        <div className="h-full rounded-full" style={{ width: `${Math.round(v * 100)}%`, backgroundColor: filtered ? anchorHex(i) : anchorHex(0) }} />
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${Math.round(v * 100)}%`,
+                            backgroundColor: filtered
+                              ? anchorHex(i)
+                              : anchorHex(0),
+                          }}
+                        />
                       </div>
-                      <span className="w-8 text-right font-label text-[11px] tabular-nums text-muted">{Math.round(v * 100)}</span>
+                      <span className="w-8 text-right font-label text-[11px] tabular-nums text-muted">
+                        {Math.round(v * 100)}
+                      </span>
                     </div>
                   </li>
                 );
