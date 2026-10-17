@@ -11,6 +11,7 @@ const Graph = dynamic(() => import("./Graph"), { ssr: false });
 
 const ALL = "__all";
 const DEFAULT_FOCUS = 4.5; // Exact center of the slider range [1, 8]
+const FOCUS_STORAGE_KEY = "sightline_focus";
 
 export default function Explorer() {
   const [data, setData] = useState<Dataset | null>(null);
@@ -20,10 +21,28 @@ export default function Explorer() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // The only way the category changes, so it also resets the slider to the middle.
+  // Restore cached slider position if the user previously changed it
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(FOCUS_STORAGE_KEY);
+      if (cached !== null) {
+        const val = Number(cached);
+        if (!Number.isNaN(val) && val >= 1 && val <= 8) {
+          setFocus(val);
+        }
+      }
+    } catch {}
+  }, []);
+
+  const onFocusChange = useCallback((newFocus: number) => {
+    setFocus(newFocus);
+    try {
+      localStorage.setItem(FOCUS_STORAGE_KEY, String(newFocus));
+    } catch {}
+  }, []);
+
   const selectCategory = useCallback((id: string) => {
     setCategoryId(id);
-    setFocus(DEFAULT_FOCUS);
   }, []);
 
   useEffect(() => {
@@ -133,7 +152,7 @@ export default function Explorer() {
             max={8}
             step={0.5}
             value={9 - focus}
-            onChange={(e) => setFocus(9 - Number(e.target.value))}
+            onChange={(e) => onFocusChange(9 - Number(e.target.value))}
             className="w-28 cursor-pointer accent-accent"
           />
           <span>Blend</span>
