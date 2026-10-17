@@ -104,7 +104,7 @@ export default function Explorer() {
 
           <Eyebrow className="mt-5">Filter</Eyebrow>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <FilterPill active={categoryId === ALL} onClick={() => setCategoryId(ALL)}>All</FilterPill>
+            <FilterPill active={categoryId === ALL} onClick={() => setCategoryId(ALL)}>None</FilterPill>
             {categories.map((c) => (
               <FilterPill key={c.id} active={c.id === categoryId} onClick={() => setCategoryId(c.id)}>{c.name}</FilterPill>
             ))}
@@ -181,8 +181,8 @@ function CategoryCard({ category, subs }: { category: Category; subs: Subclass[]
         {subs.map((s, i) => (
           <li key={s.id} className="py-2.5 text-xs">
             <div className="flex items-center gap-2">
-              <span className="font-label text-[10px] tabular-nums text-muted">{String(i + 1).padStart(2, "0")}</span>
-              <span className="font-medium text-fg">{s.name}</span>
+              <span className="w-4 shrink-0 font-label text-[10px] tabular-nums text-muted">{String(i + 1).padStart(2, "0")}</span>
+              <span className="font-medium uppercase tracking-[0.08em] text-fg">{s.name}</span>
               <MethodBadge sub={s} />
             </div>
             <p className="mt-0.5 pl-6 text-muted">{s.definition}</p>
@@ -246,7 +246,7 @@ function DetailCard({ image, pinned, categories, subsByCat, onClose }: {
                 return (
                   <li key={s.id}>
                     <div className="flex items-center gap-2 text-xs">
-                      <span className="w-28 shrink-0 truncate">{s.name}</span>
+                      <span className="w-28 shrink-0 truncate font-serif">{s.name}</span>
                       <div className="h-1 flex-1 rounded-full bg-border">
                         <div className="h-full rounded-full bg-accent" style={{ width: `${Math.round(v * 100)}%` }} />
                       </div>
