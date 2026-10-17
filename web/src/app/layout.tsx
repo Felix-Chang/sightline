@@ -4,7 +4,6 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "SightLine",
   description: "A self-organizing graph of visual references, sorted by formal visual language.",
-  icons: { icon: "/sightlinelogo.svg" },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

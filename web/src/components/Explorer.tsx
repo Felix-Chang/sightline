@@ -127,7 +127,7 @@ export default function Explorer() {
             <div className="flex items-baseline gap-2">
               <h1 className="font-serif text-[28px] font-bold leading-none tracking-tight">SightLine</h1>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/sightlinelogo.svg" alt="" aria-hidden className="h-[31px] w-[31px] shrink-0 translate-y-[6px]" />
+              <img src="/sightlinelogo.svg" alt="" aria-hidden className="h-[37px] w-[37px] shrink-0 translate-y-[7px]" />
             </div>
             <span className="font-label text-[11px] text-muted">{data.images.length} refs</span>
           </div>
