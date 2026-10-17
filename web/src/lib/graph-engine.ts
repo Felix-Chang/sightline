@@ -18,6 +18,8 @@ export class GraphEngine {
   private edgeLayer = new Graphics();
   private anchorLayer = new Container();
   private nodeLayer = new Container();
+  private labelLayer = new Container();
+  private overlayLayer = new Container();
   private sprites = new Map<string, Container>();
   private pending = new Set<string>();
   private nodes = new Map<string, Node>();
@@ -49,7 +51,8 @@ export class GraphEngine {
       return;
     }
     this.el.appendChild(this.app.canvas);
-    this.world.addChild(this.edgeLayer, this.anchorLayer, this.nodeLayer);
+    // labelLayer last: anchor names stay readable over thumbnails that drift onto them.
+    this.world.addChild(this.edgeLayer, this.anchorLayer, this.nodeLayer, this.labelLayer, this.overlayLayer);
     this.app.stage.addChild(this.world);
     this.fit();
     this.enablePanZoom();
@@ -73,7 +76,7 @@ export class GraphEngine {
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
       const before = { x: (px - this.world.x) / this.world.scale.x, y: (py - this.world.y) / this.world.scale.y };
-      const s = Math.min(4, Math.max(0.15, this.world.scale.x * Math.exp(-e.deltaY * 0.0015)));
+      const s = Math.min(4, Math.max(0.2, this.world.scale.x * Math.exp(-e.deltaY * 0.0015)));
       this.world.scale.set(s);
       this.world.position.set(px - before.x * s, py - before.y * s);
     };
@@ -209,6 +212,7 @@ export class GraphEngine {
 
   private drawAnchors() {
     this.anchorLayer.removeChildren().forEach((c) => c.destroy());
+    this.labelLayer.removeChildren().forEach((c) => c.destroy());
     const { anchors, ring } = this.layout;
     if (ring && anchors.length > 2) {
       const r = new Graphics().circle(0, 0, RING_RADIUS).stroke({ width: 1, color: theme.fg, alpha: 0.1 });
@@ -233,7 +237,7 @@ export class GraphEngine {
       const c = new Container();
       const label = new Text({
         text: a.name.toUpperCase(),
-        style: { fontFamily: "ui-monospace, SF Mono, Menlo, monospace", fontSize: 14, fill: theme.fg, letterSpacing: 1.6 },
+        style: { fontFamily: "Trebuchet MS, Lucida Grande, Lucida Sans Unicode, Segoe UI, sans-serif", fontSize: 14, fill: theme.fg, letterSpacing: 1.6 },
         resolution: 2,
       });
       label.anchor.set(0.5);
@@ -241,23 +245,38 @@ export class GraphEngine {
       const bg = new Graphics()
         .roundRect(-label.width / 2 - pad, -label.height / 2 - 6, label.width + pad * 2, label.height + 12, 999)
         .fill({ color: theme.surface })
-        .stroke({ width: 1, color: theme.border });
+        .stroke({ width: 1, color: theme.accent });
       c.addChild(bg, label);
       // Push labels outward from the center so they sit outside the cluster.
       const len = Math.hypot(a.x, a.y) || 1;
       const push = anchors.length === 2 ? 70 : 90;
       c.position.set(a.x + (a.x / len) * push, a.y + (a.y / len) * push);
-      this.anchorLayer.addChild(c);
+      this.labelLayer.addChild(c);
     }
+  }
+
+  /** Hovered and selected thumbnails ride in overlayLayer, clear of the anchor labels. */
+  private promote(id: string) {
+    const c = this.sprites.get(id);
+    if (c) this.overlayLayer.addChild(c);
+  }
+
+  /** Drop back under the labels, unless the sprite is still hovered or selected. */
+  private demote(id: string) {
+    if (id === this.hovered || id === this.selected) return;
+    const c = this.sprites.get(id);
+    if (c) this.nodeLayer.addChild(c);
   }
 
   private setHover(id: string | null) {
     const prev = this.hovered;
     this.hovered = id;
-    if (prev) this.drawFrame(prev);
+    if (prev) {
+      this.demote(prev);
+      this.drawFrame(prev);
+    }
     if (id) {
-      const c = this.sprites.get(id);
-      if (c) this.nodeLayer.setChildIndex(c, this.nodeLayer.children.length - 1);
+      this.promote(id);
       this.drawFrame(id);
     }
     this.onHover(id);
@@ -266,8 +285,14 @@ export class GraphEngine {
   setSelected(id: string | null) {
     const prev = this.selected;
     this.selected = id;
-    if (prev) this.drawFrame(prev);
-    if (id) this.drawFrame(id);
+    if (prev && prev !== id) {
+      this.demote(prev);
+      this.drawFrame(prev);
+    }
+    if (id) {
+      this.promote(id);
+      this.drawFrame(id);
+    }
   }
 
   private drawFrame(id: string) {

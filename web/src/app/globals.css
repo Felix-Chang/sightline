@@ -7,7 +7,11 @@
  */
 @theme {
   --font-sans: ui-sans-serif, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  /* Titles: humanist sans - livelier rhythm than a pure geometric, still no stem flare. */
+  --font-serif: "Gill Sans Nova", "Gill Sans", "Gill Sans MT", Futura, "Avenir Next", "Segoe UI", sans-serif;
+  /* Labels + numbering: angled terminals, stays clean at 10-11px. */
+  --font-label: "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", "Segoe UI", sans-serif;
+  /* Code and filenames stay genuinely monospaced. */
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
 
   --color-canvas: #efeee9;   /* page + graph background */

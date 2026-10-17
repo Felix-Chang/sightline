@@ -77,8 +77,8 @@ export default function Explorer() {
   if (error) {
     return (
       <Centered>
-        <p className="font-serif text-2xl">Couldn&apos;t load references</p>
-        <p className="mt-2 max-w-md font-mono text-xs text-accent">{error}</p>
+        <p className="font-serif text-2xl font-bold">Couldn&apos;t load references</p>
+        <p className="mt-2 max-w-md font-label text-xs text-accent">{error}</p>
         <p className="mt-3 max-w-md text-sm text-muted">
           Check the anon key in <code className="font-mono text-fg">web/.env.local</code> and restart <code className="font-mono text-fg">npm run dev</code>.
           If it worked before, the Supabase project may be paused. See Troubleshooting in the README.
@@ -86,11 +86,11 @@ export default function Explorer() {
       </Centered>
     );
   }
-  if (!data) return <Centered><p className="font-mono text-sm text-muted">Loading references…</p></Centered>;
+  if (!data) return <Centered><p className="font-label text-sm text-muted">Loading references…</p></Centered>;
   if (data.images.length === 0) {
     return (
       <Centered>
-        <p className="font-serif text-2xl">No images yet</p>
+        <p className="font-serif text-2xl font-bold">No images yet</p>
         <p className="mt-2 text-sm text-muted">Run <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-fg">uv run python pipeline/batch.py data/images</code> to add some.</p>
       </Centered>
     );
@@ -104,14 +104,14 @@ export default function Explorer() {
       <section className="pointer-events-none absolute left-4 top-4 max-h-[calc(100dvh-5rem)] w-[min(360px,calc(100vw-2rem))] space-y-3 overflow-y-auto">
         <div className={`pointer-events-auto ${CARD} p-5`}>
           <div className="flex items-baseline justify-between">
-            <h1 className="font-serif text-[28px] leading-none tracking-tight">SightLine</h1>
-            <span className="font-mono text-[11px] text-muted">{data.images.length} refs</span>
+            <h1 className="font-serif text-[28px] font-bold leading-none tracking-tight">SightLine</h1>
+            <span className="font-label text-[11px] text-muted">{data.images.length} refs</span>
           </div>
           <p className="mt-2 text-xs text-muted">References sorted by visual language, not subject.</p>
 
-          <Eyebrow n="01" className="mt-5">Filter</Eyebrow>
+          <Eyebrow className="mt-5">Filter</Eyebrow>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <FilterPill active={categoryId === ALL} onClick={() => selectCategory(ALL)}>All</FilterPill>
+            <FilterPill active={categoryId === ALL} onClick={() => selectCategory(ALL)}>None</FilterPill>
             {categories.map((c) => (
               <FilterPill key={c.id} active={c.id === categoryId} onClick={() => selectCategory(c.id)}>{c.name}</FilterPill>
             ))}
@@ -123,7 +123,7 @@ export default function Explorer() {
 
       {/* Focus slider */}
       {category && (
-        <div className={`absolute bottom-4 left-4 flex items-center gap-3 ${CARD} px-4 py-2.5 font-mono text-[11px] text-muted`}>
+        <div className={`absolute bottom-4 left-4 flex items-center gap-3 ${CARD} px-4 py-2.5 font-label text-[11px] text-muted`}>
           <label htmlFor="focus">Separate</label>
           <input
             id="focus"
@@ -139,7 +139,7 @@ export default function Explorer() {
         </div>
       )}
 
-      <p className="absolute bottom-5 right-5 hidden font-mono text-[11px] text-muted md:block">
+      <p className="absolute bottom-5 right-5 hidden font-label text-[11px] text-muted md:block">
         scroll to zoom · drag to pan · ← → filters
       </p>
 
@@ -164,12 +164,11 @@ function Centered({ children }: { children: React.ReactNode }) {
   return <main className="flex h-dvh flex-col items-center justify-center px-4 text-center">{children}</main>;
 }
 
-/** Numbered monospace label, e.g. "01  FILTER". */
-function Eyebrow({ n, children, className = "" }: { n: string; children: React.ReactNode; className?: string }) {
+/** Monospace section label, e.g. "FILTER". */
+function Eyebrow({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <p className={`font-mono text-[11px] uppercase tracking-[0.14em] text-muted ${className}`}>
-      <span className="text-accent">{n}</span>
-      <span className="ml-2">{children}</span>
+    <p className={`font-label text-[11px] uppercase tracking-[0.14em] text-accent ${className}`}>
+      {children}
     </p>
   );
 }
@@ -191,15 +190,15 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
 function CategoryCard({ category, subs }: { category: Category; subs: Subclass[] }) {
   return (
     <div className={`pointer-events-auto ${CARD} p-5`}>
-      <Eyebrow n="02">{category.kind === "spectrum" ? "Spectrum" : "Qualities"}</Eyebrow>
-      <h2 className="mt-1.5 font-serif text-[26px] leading-tight">{category.name}</h2>
+      <h2 className="font-serif text-[26px] font-bold leading-tight">{category.name}</h2>
       {category.description && <p className="mt-1 text-xs text-muted">{category.description}</p>}
-      <ul className="mt-4 divide-y divide-border border-t border-border">
+      <Eyebrow className="mt-5">Type</Eyebrow>
+      <ul className="mt-2 divide-y divide-border border-t border-border">
         {subs.map((s, i) => (
           <li key={s.id} className="py-2.5 text-xs">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] text-muted">{String(i + 1).padStart(2, "0")}</span>
-              <span className="font-medium text-fg">{s.name}</span>
+              <span className="w-4 shrink-0 font-label text-[10px] tabular-nums text-muted">{String(i + 1).padStart(2, "0")}</span>
+              <span className="font-medium uppercase tracking-[0.08em] text-fg">{s.name}</span>
               <MethodBadge sub={s} />
             </div>
             <p className="mt-0.5 pl-6 text-muted">{s.definition}</p>
@@ -215,9 +214,7 @@ function MethodBadge({ sub }: { sub: Subclass }) {
   return (
     <span
       title={measured ? `${Math.round(sub.pixel_weight * 100)}% pixel math, rest SigLIP` : "Scored by SigLIP only"}
-      className={`ml-auto rounded-full border px-2 py-px font-mono text-[10px] ${
-        measured ? "border-border text-muted" : "border-accent/40 text-accent"
-      }`}
+      className="ml-auto rounded-full border border-border px-2 py-px font-label text-[10px] text-muted"
     >
       {measured ? "measured" : "perceived"}
     </span>
@@ -244,18 +241,18 @@ function DetailCard({ image, pinned, categories, subsByCat, onClose }: {
         </div>
         {categories.map((c) => (
           <div key={c.id} className="mt-5">
-            <p className="font-serif text-base">{c.name}</p>
+            <p className="font-serif text-base font-semibold">{c.name}</p>
             <ul className="mt-2 space-y-2">
               {(subsByCat.get(c.id) ?? []).map((s) => {
                 const v = image.scores[s.id] ?? 0;
                 return (
                   <li key={s.id}>
                     <div className="flex items-center gap-2 text-xs">
-                      <span className="w-28 shrink-0 truncate">{s.name}</span>
+                      <span className="w-28 shrink-0 truncate font-serif">{s.name}</span>
                       <div className="h-1 flex-1 rounded-full bg-border">
                         <div className="h-full rounded-full bg-accent" style={{ width: `${Math.round(v * 100)}%` }} />
                       </div>
-                      <span className="w-8 text-right font-mono text-[11px] text-muted">{Math.round(v * 100)}</span>
+                      <span className="w-8 text-right font-label text-[11px] tabular-nums text-muted">{Math.round(v * 100)}</span>
                     </div>
                   </li>
                 );
