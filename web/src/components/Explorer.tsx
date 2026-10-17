@@ -47,10 +47,10 @@ export default function Explorer() {
     const images = data?.images ?? [];
     if (!category) {
       const enabledSubs = categories.flatMap((c) => (subsByCat.get(c.id) ?? []).map((s) => s.id));
-      return { anchors: [], targets: umapTargets(images), links: knnLinks(images, enabledSubs, 2), ring: false };
+      return { anchors: [], targets: umapTargets(images), links: knnLinks(images, enabledSubs, 2), ring: false, showLinks: true };
     }
     const anchors = anchorsFor(subs);
-    return { anchors, targets: targetsFor(images, anchors, focus), links: knnLinks(images, subs.map((s) => s.id), 3), ring: true };
+    return { anchors, targets: targetsFor(images, anchors, focus), links: knnLinks(images, subs.map((s) => s.id), 3), ring: true, showLinks: false };
   }, [data, category, categories, subs, subsByCat, focus]);
 
   const onSelect = useCallback((id: string | null) => setSelectedId(id), []);

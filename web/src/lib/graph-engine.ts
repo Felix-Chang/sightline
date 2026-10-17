@@ -9,7 +9,7 @@ const THUMB = 64;
 type Node = SimulationNodeDatum & { id: string; tx: number; ty: number; weights: number[] };
 type Link = { source: string | Node; target: string | Node };
 
-export type GraphLayout = { anchors: Anchor[]; targets: Map<string, Target>; links: [string, string][]; ring: boolean };
+export type GraphLayout = { anchors: Anchor[]; targets: Map<string, Target>; links: [string, string][]; ring: boolean; showLinks: boolean };
 
 /** Imperative PixiJS + d3-force scene. React owns the UI around it; this owns the canvas. */
 export class GraphEngine {
@@ -24,7 +24,7 @@ export class GraphEngine {
   private pending = new Set<string>();
   private nodes = new Map<string, Node>();
   private sim: Simulation<Node, Link> | null = null;
-  private layout: GraphLayout = { anchors: [], targets: new Map(), links: [], ring: false };
+  private layout: GraphLayout = { anchors: [], targets: new Map(), links: [], ring: false, showLinks: false };
   private selected: string | null = null;
   private hovered: string | null = null;
   private destroyed = false;
@@ -188,16 +188,19 @@ export class GraphEngine {
     }
     const g = this.edgeLayer;
     g.clear();
-    // Neighbor web: faint curves between images with similar scores.
-    for (const l of links) {
-      const a = l.source as Node;
-      const b = l.target as Node;
-      if (a.x == null || b.x == null) continue;
-      const mx = (a.x + b.x) / 2;
-      const my = (a.y! + b.y!) / 2;
-      g.moveTo(a.x, a.y!).quadraticCurveTo(mx * 0.9, my * 0.9, b.x, b.y!);
+    // Neighbor web: faint curves between images with similar scores. Unfiltered view only -
+    // with a category picked the anchor threads carry the story and these just add noise.
+    if (this.layout.showLinks) {
+      for (const l of links) {
+        const a = l.source as Node;
+        const b = l.target as Node;
+        if (a.x == null || b.x == null) continue;
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y! + b.y!) / 2;
+        g.moveTo(a.x, a.y!).quadraticCurveTo(mx * 0.9, my * 0.9, b.x, b.y!);
+      }
+      g.stroke({ width: 1, color: theme.muted, alpha: 0.28 });
     }
-    g.stroke({ width: 1, color: theme.muted, alpha: 0.28 });
     // Anchor threads: accent curves from each anchor to images that strongly have that quality.
     const { anchors } = this.layout;
     anchors.forEach((anchor, i) => {
