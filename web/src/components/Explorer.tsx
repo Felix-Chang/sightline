@@ -19,14 +19,11 @@ export default function Explorer() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // The only way the category changes, so it also resets the slider to the middle.
   const selectCategory = useCallback((id: string) => {
     setCategoryId(id);
     setFocus(DEFAULT_FOCUS);
   }, []);
-
-  useEffect(() => {
-    setFocus(DEFAULT_FOCUS);
-  }, [categoryId]);
 
   useEffect(() => {
     loadDataset().then(setData).catch((e) => setError(String(e.message ?? e)));
