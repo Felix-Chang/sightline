@@ -2,6 +2,8 @@
 
 A self-organizing graph of visual references. Drop in posters, graphics and illustrations, and SightLine scores each one on formal visual language (line, shape, color, value, balance, movement…). Pick a filter and every image drifts into a web of clusters: straight-line images group together and shade toward jagged, then curved.
 
+**New to the project?** Jump to [Team setup](#team-setup). Running the app takes about 5 minutes.
+
 Design rationale: [DESIGN.md](DESIGN.md).
 
 ---
@@ -32,41 +34,101 @@ Design rationale: [DESIGN.md](DESIGN.md).
 
 ## Team setup
 
-There are two roles. Everyone does **A**. Only people adding images also do **B**.
+There are two roles:
 
-### Prerequisites
+| Role | Who | What you need | Key you need (ask Felix) |
+|---|---|---|---|
+| **A. Run the app** | everyone | Node.js | **anon key** (shared in team chat) |
+| **B. Add images** | whoever is curating | Node.js + uv | **service role key** (private DM only) |
 
-- [Bun](https://bun.sh) (or Node 20+ with npm)
-- For role B: [uv](https://docs.astral.sh/uv/) and Python 3.11+. The first ingest downloads about 5 GB of models (SigLIP 2 + DINOv2) into `~/.cache/huggingface`.
+You do **not** need Docker, a Supabase account, or Python installed separately.
+
+### Step 0: install the tools
+
+**Node.js 20 or newer** (includes npm). Check with `node -v`. If it's missing or older than v20, install the LTS version from [nodejs.org](https://nodejs.org).
+
+> Use **npm** for this project, not yarn, pnpm or bun. The lockfile is `package-lock.json`.
+
+**uv** (role B only). It manages Python for you. Check with `uv --version`; if it's missing:
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Open a new terminal afterwards so `uv` is on your PATH.
 
 ### A. Run the web app (everyone)
 
 ```bash
-git clone <repo-url> sightline
+git clone https://github.com/Felix-Chang/sightline.git
 cd sightline/web
-cp .env.example .env.local      # then paste the URL + anon key (ask the project owner)
-bun install
-bun run dev                     # http://localhost:3000
+cp .env.example .env.local
 ```
 
-The anon key is safe to share in the team chat. It can only read and add corrections.
+On Windows Command Prompt, use `copy .env.example .env.local` instead of `cp` (PowerShell accepts `cp`).
 
-### B. Add images (whoever is curating)
+Open `web/.env.local` in your editor and paste the **anon key** after `NEXT_PUBLIC_SUPABASE_ANON_KEY=` (no quotes, no spaces). The URL is already filled in. Then:
+
+```bash
+npm install
+npm run dev
+```
+
+Open **http://localhost:3000**.
+
+**It worked if** you see the SightLine panel with "N references" and thumbnails. If it says *No images yet*, the app is fine; nobody has added images yet.
+
+The anon key is safe to share in team chat: it can only read and add corrections. `npm install` may warn that `unrs-resolver` install scripts were blocked (npm 12+). Ignore that; lint and build work without it.
+
+### B. Add images (curators)
+
+Run these from the **repo root** (`sightline/`, not `sightline/web/`):
 
 ```bash
 cd sightline
-cp .env.example .env            # paste the URL + SERVICE ROLE key (get it privately)
+cp .env.example .env
+```
+
+Open `.env` and paste the **service role key** after `SUPABASE_SERVICE_ROLE_KEY=`. Then:
+
+```bash
 uv sync
-# put images in data/images/ (any folders inside are fine; jpg, png, webp, gif, heic)
+mkdir -p data/images
+```
+
+(`mkdir data\images` on Windows.) Put images in `data/images/`. Subfolders are fine; jpg, png, webp, gif and heic all work. Then:
+
+```bash
 uv run python pipeline/batch.py data/images
 ```
 
-- **The service role key is a secret.** It can write and delete everything. Share it through a password manager or a private DM, never in git, screenshots or a public channel.
-- Re-running is safe: images already in the database are skipped (matched by file hash), so two people can ingest overlapping folders.
-- `data/` is git-ignored. Images live in Supabase Storage, not in the repo.
-- About 1.5 s per image on an M-series Mac, plus a few seconds of model loading.
+**It worked if** it prints `[1/N] + filename` per image, ends with `added N … combined …`, and the images appear when teammates refresh the app.
 
-### One-time: create the hosted project (project owner only)
+- **The first run downloads about 5 GB of AI models** (SigLIP 2 + DINOv2, cached in `~/.cache/huggingface`). Do this on good wifi before the event. Later runs start in seconds.
+- **Speed:** about 1.5 s per image on an M-series Mac or NVIDIA GPU, 5–10 s on CPU-only laptops.
+- **The service role key is a secret.** It can write and delete everything. Keep it in `.env` only (git-ignored), and never paste it in chat, screenshots or code.
+- **Re-running is safe:** images already in the database are skipped (matched by file hash), so curators can ingest overlapping folders.
+- `data/` is git-ignored. Images live in Supabase Storage, not in the repo.
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Browser shows *supabaseUrl is required* or *Couldn't load data* | `web/.env.local` is missing or the key is wrong. Fix it, then **stop and restart `npm run dev`** (env files are only read at startup). |
+| App loads but shows nothing / requests time out | The free Supabase project may be paused after a week idle. Tell Felix to click **Restore** in the dashboard. |
+| `KeyError: 'SUPABASE_URL'` from `batch.py` | `.env` is missing at the repo root (it must sit next to `pyproject.toml`). |
+| `can't open file … pipeline/batch.py` | You're in `web/`. `cd ..` to the repo root first. |
+| `batch.py` prints `!` errors for some files | That file couldn't be read (corrupt or unsupported). The rest of the batch continues. |
+| Port 3000 already in use | Next.js picks 3001 automatically; use the URL it prints. |
+| `uv: command not found` right after installing | Open a new terminal window. |
+
+### One-time: create the hosted project (already done by Felix; for reference)
 
 1. Create a project at [supabase.com/dashboard](https://supabase.com/dashboard). The free tier is enough.
 2. Install the CLI (`brew install supabase/tap/supabase`), then:
