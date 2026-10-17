@@ -123,11 +123,11 @@ export default function Explorer() {
       {/* Title + filter card */}
       <section className="pointer-events-none absolute left-4 top-4 max-h-[calc(100dvh-5rem)] w-[min(360px,calc(100vw-2rem))] space-y-3 overflow-y-auto">
         <div className={`pointer-events-auto ${CARD} p-5`}>
-          <div className="flex items-baseline justify-between">
-            <div className="flex items-baseline gap-2">
-              <h1 className="font-serif text-[28px] font-bold leading-none tracking-tight">SightLine</h1>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/sightlinelogo.svg" alt="" aria-hidden className="h-[37px] w-[37px] shrink-0 translate-y-[7px]" />
+              <img src="/sightlinelogo.svg" alt="" aria-hidden className="h-[37px] w-[37px] shrink-0" />
+              <h1 className="font-serif text-[28px] font-bold leading-none tracking-tight">SightLine</h1>
             </div>
             <span className="font-label text-[11px] text-muted">{data.images.length} refs</span>
           </div>
