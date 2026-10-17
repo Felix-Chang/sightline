@@ -150,6 +150,7 @@ export default function Explorer() {
           image={detail}
           pinned={detail.id === selectedId}
           categories={category ? [category] : categories}
+          filtered={!!category}
           subsByCat={subsByCat}
           onClose={() => setSelectedId(null)}
         />
@@ -222,10 +223,11 @@ function MethodBadge({ sub }: { sub: Subclass }) {
   );
 }
 
-function DetailCard({ image, pinned, categories, subsByCat, onClose }: {
+function DetailCard({ image, pinned, categories, filtered, subsByCat, onClose }: {
   image: ImageNode;
   pinned: boolean;
   categories: Category[];
+  filtered: boolean;
   subsByCat: Map<string, Subclass[]>;
   onClose: () => void;
 }) {
@@ -251,7 +253,7 @@ function DetailCard({ image, pinned, categories, subsByCat, onClose }: {
                     <div className="flex items-center gap-2 text-xs">
                       <span className="w-28 shrink-0 truncate font-serif">{s.name}</span>
                       <div className="h-1 flex-1 rounded-full bg-border">
-                        <div className="h-full rounded-full" style={{ width: `${Math.round(v * 100)}%`, backgroundColor: anchorHex(i) }} />
+                        <div className="h-full rounded-full" style={{ width: `${Math.round(v * 100)}%`, backgroundColor: filtered ? anchorHex(i) : anchorHex(0) }} />
                       </div>
                       <span className="w-8 text-right font-label text-[11px] tabular-nums text-muted">{Math.round(v * 100)}</span>
                     </div>
