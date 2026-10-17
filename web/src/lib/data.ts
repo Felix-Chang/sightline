@@ -17,8 +17,6 @@ export type ImageNode = {
   umap: [number, number];
   scores: Record<string, number>; // subclass id -> combined 0..1
 };
-export type Label = "absent" | "present" | "dominant";
-
 export type Dataset = { categories: Category[]; subclasses: Subclass[]; images: ImageNode[] };
 
 const PAGE = 1000;
@@ -52,7 +50,6 @@ async function fetchAll<T>(table: string, columns: string, opts: { order: string
     start += data.length;
   }
 }
-
 export async function loadDataset(): Promise<Dataset> {
   const [categories, subclasses, images, scores] = await Promise.all([
     fetchAll<Category>("categories", "*", { order: ["sort", "id"] }),
@@ -84,9 +81,4 @@ export async function loadDataset(): Promise<Dataset> {
       scores: byImage.get(r.id) ?? {},
     })),
   };
-}
-
-export async function saveCorrection(imageId: string, subclassId: string, label: Label) {
-  const { error } = await supabase.from("corrections").insert({ image_id: imageId, subclass_id: subclassId, label, origin: "ui" });
-  if (error) throw new Error(error.message);
 }

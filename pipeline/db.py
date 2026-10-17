@@ -70,7 +70,6 @@ def seed_taxonomy() -> None:
 _ORDER = {
     "scores": ("image_id", "subclass_id", "source"),
     "images": ("id",),
-    "corrections": ("id",),
     "categories": ("id",),
     "subclasses": ("id",),
 }
