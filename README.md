@@ -114,6 +114,8 @@ uv run python pipeline/batch.py data/images
 - **Speed:** about 1.5 s per image on an M-series Mac or NVIDIA GPU, 5–10 s on CPU-only laptops.
 - **The service role key is a secret.** It can write and delete everything. Keep it in `.env` only (git-ignored), and never paste it in chat, screenshots or code.
 - **Re-running is safe:** images already in the database are skipped (matched by file hash), so curators can ingest overlapping folders.
+- **Interrupted runs fix themselves:** if a run dies (Ctrl+C, wifi drop), just run the same command again. Half-saved images get re-ingested, and images missing combined scores get recombined. Force a recombine with `--recombine`.
+- **Phone photos** are rotated upright automatically. Files over 50 MB and unreadable files are skipped with a message; the rest of the batch continues.
 - `data/` is git-ignored. Images live in Supabase Storage, not in the repo.
 
 ### Troubleshooting
@@ -127,6 +129,8 @@ uv run python pipeline/batch.py data/images
 | `batch.py` prints `!` errors for some files | That file couldn't be read (corrupt or unsupported). The rest of the batch continues. |
 | Port 3000 already in use | Next.js picks 3001 automatically; use the URL it prints. |
 | `uv: command not found` right after installing | Open a new terminal window. |
+| Images were ingested but don't show in the app | Run `uv run python pipeline/batch.py data/images --recombine`. The app only shows images that have combined scores. |
+| Local Docker only: uploads fail with `database error, code: 42P10` after `supabase db reset` | Reset left local Storage out of sync. Run `supabase stop --no-backup` then `supabase start` (wipes local data only). |
 
 ### One-time: create the hosted project (already done by Felix; for reference)
 

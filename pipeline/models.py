@@ -79,5 +79,5 @@ class PromptBank:
         self.means = np.stack([siglip.embed_texts(prompts[sid]).mean(axis=0) for sid in self.ids])
 
     def score(self, image_embedding: np.ndarray) -> dict[str, float]:
-        sims = self.means @ image_embedding
+        sims = np.nan_to_num(self.means @ image_embedding)
         return {sid: round(float(s), 6) for sid, s in zip(self.ids, sims)}

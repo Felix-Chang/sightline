@@ -34,25 +34,34 @@ type ImageRow = {
   umap_y: number | null;
 };
 
-async function fetchAll<T>(table: string, columns: string, opts: { order?: string; eq?: [string, string] } = {}): Promise<T[]> {
+/**
+ * Read every row in pages. `order` must end in unique column(s): Postgres row order isn't
+ * stable between requests, so unordered pages can skip or repeat rows. Stops on an empty
+ * page, so a server row cap below PAGE can't silently truncate the result.
+ */
+async function fetchAll<T>(table: string, columns: string, opts: { order: string[]; eq?: [string, string] }): Promise<T[]> {
   const rows: T[] = [];
-  for (let start = 0; ; start += PAGE) {
+  for (let start = 0; ; ) {
     let q = supabase.from(table).select(columns);
     if (opts.eq) q = q.eq(opts.eq[0], opts.eq[1]);
-    if (opts.order) q = q.order(opts.order);
+    for (const col of opts.order) q = q.order(col);
     const { data, error } = await q.range(start, start + PAGE - 1);
     if (error) throw new Error(`${table}: ${error.message}`);
-    rows.push(...((data ?? []) as T[]));
-    if (!data || data.length < PAGE) return rows;
+    if (!data || data.length === 0) return rows;
+    rows.push(...(data as T[]));
+    start += data.length;
   }
 }
 
 export async function loadDataset(): Promise<Dataset> {
   const [categories, subclasses, images, scores] = await Promise.all([
-    fetchAll<Category>("categories", "*", { order: "sort" }),
-    fetchAll<Subclass>("subclasses", "id,category_id,name,definition,anchor_order,pixel_weight", { order: "anchor_order" }),
-    fetchAll<ImageRow>("images", "id,filename,thumb_path,storage_path,width,height,umap_x,umap_y", { order: "created_at" }),
-    fetchAll<{ image_id: string; subclass_id: string; value: number }>("scores", "image_id,subclass_id,value", { eq: ["source", "combined"] }),
+    fetchAll<Category>("categories", "*", { order: ["sort", "id"] }),
+    fetchAll<Subclass>("subclasses", "id,category_id,name,definition,anchor_order,pixel_weight", { order: ["anchor_order", "id"] }),
+    fetchAll<ImageRow>("images", "id,filename,thumb_path,storage_path,width,height,umap_x,umap_y", { order: ["created_at", "id"] }),
+    fetchAll<{ image_id: string; subclass_id: string; value: number }>("scores", "image_id,subclass_id,value", {
+      eq: ["source", "combined"],
+      order: ["image_id", "subclass_id"],
+    }),
   ]);
 
   const byImage = new Map<string, Record<string, number>>();

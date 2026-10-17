@@ -66,18 +66,34 @@ def seed_taxonomy() -> None:
     ], on_conflict="id").execute()
 
 
+# Primary keys, used as a stable sort so pages never skip or repeat rows.
+_ORDER = {
+    "scores": ("image_id", "subclass_id", "source"),
+    "images": ("id",),
+    "corrections": ("id",),
+    "categories": ("id",),
+    "subclasses": ("id",),
+}
+
+
 def fetch_all(table: str, columns: str = "*", page: int = 1000, **eq) -> list[dict]:
-    """Read every row, paging past PostgREST's row limit."""
+    """Read every row, paging past PostgREST's row limit.
+
+    Pages are ordered by primary key (Postgres row order isn't stable between requests),
+    and paging stops on an empty page, so a server row cap below `page` can't truncate it.
+    """
     rows, start = [], 0
     while True:
         q = client().table(table).select(columns)
         for k, v in eq.items():
             q = q.eq(k, v)
+        for col in _ORDER[table]:
+            q = q.order(col)
         batch = q.range(start, start + page - 1).execute().data
-        rows.extend(batch)
-        if len(batch) < page:
+        if not batch:
             return rows
-        start += page
+        rows.extend(batch)
+        start += len(batch)
 
 
 def chunked(items: list, n: int = 500):
