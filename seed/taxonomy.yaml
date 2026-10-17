@@ -34,7 +34,7 @@ categories:
           - an energetic image full of sharp spiky angles
       - id: curved
         name: Curved
-        definition: Flowing, graceful, soft lines (Art Nouveau, Matisse's cut-outs).
+        definition: Flowing, graceful, soft lines.
         pixel: line_curved
         weight: 0.5
         prompts:
@@ -56,7 +56,7 @@ categories:
     subclasses:
       - id: rectangle
         name: Rectangle
-        definition: Order and structure (Mondrian's grids).
+        definition: Order and structure.
         pixel: shape_rectangle
         weight: 0.4
         prompts:
@@ -74,7 +74,7 @@ categories:
           - pointed triangular forms and pyramids
       - id: circle
         name: Circle
-        definition: Wholeness and enclosure (halos, mandalas, rose windows).
+        definition: Wholeness and enclosure.
         pixel: shape_circle
         weight: 0.4
         prompts:
@@ -92,17 +92,17 @@ categories:
   - id: form
     name: Form
     kind: tags
-    description: Volume as depicted in a 2D image (shading, rendering). Expected to be noisy on flat graphics.
+    description: Volume as depicted in a 2D image (shading, rendering).
     subclasses:
       - id: geometric
         name: Geometric
-        definition: Crisp solids such as cubes, spheres and cylinders.
+        definition: Crisp shapes & solids such as squares & circles, or cubes & spheres.
         prompts:
           - shaded geometric solids like cubes spheres and cylinders
           - a rendered illustration of crisp three dimensional geometric forms
       - id: organic
         name: Organic
-        definition: Rounded, flowing volumes (Henry Moore, Barbara Hepworth).
+        definition: Rounded, flowing volumes.
         prompts:
           - smooth rounded flowing three dimensional volumes
           - an image of soft sculptural organic forms
@@ -121,7 +121,7 @@ categories:
     subclasses:
       - id: shallow
         name: Shallow
-        definition: Compressed, stage-like or flat (Egyptian reliefs, Japanese prints).
+        definition: Compressed, stage-like or flat.
         pixel: space_shallow
         weight: 0.3
         prompts:
@@ -139,7 +139,7 @@ categories:
           - negative space forming part of the design
       - id: deep
         name: Deep
-        definition: A convincing illusion of distance through perspective and atmosphere.
+        definition: "A convincing illusion of distance/depth achieved through perspective and atmosphere."
         prompts:
           - an image with deep perspective receding into the distance
           - a landscape with strong atmospheric depth
@@ -176,7 +176,7 @@ categories:
           - a cool toned calm color palette
       - id: monochromatic
         name: Monochromatic
-        definition: One hue in many shades (Picasso's Blue Period).
+        definition: One hue in many shades.
         pixel: color_monochromatic
         weight: 0.8
         prompts:
@@ -240,7 +240,7 @@ categories:
           - bilateral symmetry across a central axis
       - id: radial
         name: Radial symmetry
-        definition: Elements spread from a center point (rose windows, mandalas).
+        definition: "Elements spread from a center point (ex: rose windows, mandalas)."
         pixel: balance_radial
         weight: 0.5
         prompts:
@@ -316,7 +316,7 @@ categories:
     subclasses:
       - id: diagonal
         name: Diagonal
-        definition: Action and instability (Hokusai's The Great Wave).
+        definition: Action and instability.
         pixel: movement_diagonal
         weight: 0.6
         prompts:
@@ -332,7 +332,7 @@ categories:
           - a road or path leading the viewer through the image
       - id: swirling
         name: Swirling
-        definition: Circular, spiraling motion (The Starry Night).
+        definition: Circular, spiraling motion.
         prompts:
           - swirling spiraling circular motion like starry night
           - a vortex of swirling brushstrokes
@@ -364,13 +364,13 @@ categories:
           - a progression of shapes changing step by step in color
 
   - id: unity
-    name: Unity & variety
+    name: Unity
     kind: spectrum
     description: How cohesive or busy the whole image feels.
     subclasses:
       - id: minimal
         name: Minimal
-        definition: Pared down to a few elements.
+        definition: Just a few elements.
         pixel: unity_minimal
         weight: 0.7
         prompts:
@@ -386,7 +386,7 @@ categories:
           - a unified consistent visual style
       - id: chaotic
         name: Chaotic
-        definition: Dense variety and visual noise on purpose (Pollock, maximalist collage).
+        definition: Dense variety and visual noise.
         pixel: unity_chaotic
         weight: 0.7
         prompts:
