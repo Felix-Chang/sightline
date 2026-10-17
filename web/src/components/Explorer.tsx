@@ -9,14 +9,21 @@ import type { GraphLayout } from "@/lib/graph-engine";
 const Graph = dynamic(() => import("./Graph"), { ssr: false });
 
 const ALL = "__all";
+const DEFAULT_FOCUS = 4.5; // Exact center of the slider range [1, 8]
 
 export default function Explorer() {
   const [data, setData] = useState<Dataset | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string>(ALL);
-  const [focus, setFocus] = useState(3);
+  const [focus, setFocus] = useState(DEFAULT_FOCUS);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // The only way the category changes, so it also resets the slider to the middle.
+  const selectCategory = useCallback((id: string) => {
+    setCategoryId(id);
+    setFocus(DEFAULT_FOCUS);
+  }, []);
 
   useEffect(() => {
     loadDataset().then(setData).catch((e) => setError(String(e.message ?? e)));
@@ -57,12 +64,12 @@ export default function Explorer() {
       if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
         const i = ids.indexOf(categoryId);
         const next = (i + (e.key === "ArrowRight" ? 1 : ids.length - 1)) % ids.length;
-        setCategoryId(ids[next]);
+        selectCategory(ids[next]);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [categories, categoryId]);
+  }, [categories, categoryId, selectCategory]);
 
   const detailId = selectedId ?? hoveredId;
   const detail = data?.images.find((i) => i.id === detailId) ?? null;
@@ -104,9 +111,9 @@ export default function Explorer() {
 
           <Eyebrow n="01" className="mt-5">Filter</Eyebrow>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <FilterPill active={categoryId === ALL} onClick={() => setCategoryId(ALL)}>All</FilterPill>
+            <FilterPill active={categoryId === ALL} onClick={() => selectCategory(ALL)}>All</FilterPill>
             {categories.map((c) => (
-              <FilterPill key={c.id} active={c.id === categoryId} onClick={() => setCategoryId(c.id)}>{c.name}</FilterPill>
+              <FilterPill key={c.id} active={c.id === categoryId} onClick={() => selectCategory(c.id)}>{c.name}</FilterPill>
             ))}
           </div>
         </div>
@@ -117,9 +124,18 @@ export default function Explorer() {
       {/* Focus slider */}
       {category && (
         <div className={`absolute bottom-4 left-4 flex items-center gap-3 ${CARD} px-4 py-2.5 font-mono text-[11px] text-muted`}>
-          <label htmlFor="focus">Blend</label>
-          <input id="focus" type="range" min={1} max={8} step={0.5} value={focus} onChange={(e) => setFocus(Number(e.target.value))} className="w-28 accent-accent" />
-          <span>Separate</span>
+          <label htmlFor="focus">Separate</label>
+          <input
+            id="focus"
+            type="range"
+            min={1}
+            max={8}
+            step={0.5}
+            value={9 - focus}
+            onChange={(e) => setFocus(9 - Number(e.target.value))}
+            className="w-28 cursor-pointer accent-accent"
+          />
+          <span>Blend</span>
         </div>
       )}
 
