@@ -1,12 +1,21 @@
 import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
-import { forceCollide, forceLink, forceSimulation, forceX, forceY, type Simulation, type SimulationNodeDatum } from "d3-force";
+import { forceCollide, forceSimulation, forceX, forceY, type ForceCollide, type Simulation, type SimulationNodeDatum } from "d3-force";
 import type { ImageNode } from "./data";
 import { RING_RADIUS, type Anchor, type Target } from "./layout";
 import { canvasHex, theme } from "./theme";
 
 const THUMB = 64;
+const ACTIVE_SCALE = 1.7;
+const COLLISION_RADIUS = THUMB * 0.56;
 
-type Node = SimulationNodeDatum & { id: string; tx: number; ty: number; weights: number[] };
+type Node = SimulationNodeDatum & {
+  id: string;
+  tx: number;
+  ty: number;
+  weights: number[];
+  scale: number;
+  targetScale: number;
+};
 type Link = { source: string | Node; target: string | Node };
 
 export type GraphLayout = { anchors: Anchor[]; targets: Map<string, Target>; links: [string, string][]; ring: boolean };
@@ -24,9 +33,11 @@ export class GraphEngine {
   private pending = new Set<string>();
   private nodes = new Map<string, Node>();
   private sim: Simulation<Node, Link> | null = null;
+  private collide: ForceCollide<Node> | null = null;
   private layout: GraphLayout = { anchors: [], targets: new Map(), links: [], ring: false };
   private selected: string | null = null;
   private hovered: string | null = null;
+  private layoutTransition = false;
   private destroyed = false;
   private dragMoved = false;
   private ready = false;
@@ -149,7 +160,16 @@ export class GraphEngine {
         this.sprites.set(img.id, c);
         this.pending.delete(img.id);
         // New images fly in from the center.
-        this.nodes.set(img.id, { id: img.id, x: (Math.random() - 0.5) * 40, y: (Math.random() - 0.5) * 40, tx: 0, ty: 0, weights: [] });
+        this.nodes.set(img.id, {
+          id: img.id,
+          x: (Math.random() - 0.5) * 40,
+          y: (Math.random() - 0.5) * 40,
+          tx: 0,
+          ty: 0,
+          weights: [],
+          scale: 1,
+          targetScale: 1,
+        });
         this.drawFrame(img.id);
       }),
     );
@@ -159,11 +179,15 @@ export class GraphEngine {
   applyLayout(layout: GraphLayout, alpha = 0.8) {
     this.layout = layout;
     if (!this.ready) return;
+    // A selected image remains selected, but must travel when the filter changes.
+    this.layoutTransition = true;
     for (const node of this.nodes.values()) {
       const t = layout.targets.get(node.id);
       node.tx = t?.x ?? 0;
       node.ty = t?.y ?? 0;
       node.weights = t?.weights ?? [];
+      node.fx = undefined;
+      node.fy = undefined;
     }
     this.drawAnchors();
     const nodes = [...this.nodes.values()];
@@ -171,20 +195,41 @@ export class GraphEngine {
       .filter(([a, b]) => this.nodes.has(a) && this.nodes.has(b))
       .map(([source, target]) => ({ source, target }));
     this.sim?.stop();
+    const collide = forceCollide<Node>()
+      .radius((d) => COLLISION_RADIUS * d.scale)
+      .strength(0.8)
+      .iterations(1);
+    this.collide = collide;
     this.sim = forceSimulation<Node, Link>(nodes)
       .force("x", forceX<Node>((d) => d.tx).strength(0.09))
       .force("y", forceY<Node>((d) => d.ty).strength(0.09))
-      .force("collide", forceCollide<Node>(THUMB * 0.56).strength(0.9))
-      .force("link", forceLink<Node, Link>(links).id((d) => d.id).distance(THUMB * 1.4).strength(0.015))
+      .force("collide", collide)
       .alpha(alpha)
-      .alphaDecay(0.025)
-      .velocityDecay(0.35)
+      .alphaDecay(0.02)
+      .velocityDecay(0.5)
       .on("tick", () => this.tick(links));
+    this.updateInteraction();
   }
 
   private tick(links: Link[]) {
+    let resized = false;
     for (const node of this.nodes.values()) {
-      this.sprites.get(node.id)?.position.set(node.x ?? 0, node.y ?? 0);
+      const delta = node.targetScale - node.scale;
+      if (Math.abs(delta) > 0.001) {
+        node.scale += delta * 0.05;
+        resized = true;
+      } else {
+        node.scale = node.targetScale;
+      }
+      const sprite = this.sprites.get(node.id);
+      sprite?.position.set(node.x ?? 0, node.y ?? 0);
+      sprite?.scale.set(node.scale);
+    }
+    // d3 caches collision radii, so refresh them while thumbnails animate their size.
+    if (resized) this.collide?.radius((d) => COLLISION_RADIUS * d.scale);
+    if (this.layoutTransition && (this.sim?.alpha() ?? 1) < 0.04) {
+      this.layoutTransition = false;
+      this.lockActiveNodes();
     }
     const g = this.edgeLayer;
     g.clear();
@@ -279,6 +324,7 @@ export class GraphEngine {
       this.promote(id);
       this.drawFrame(id);
     }
+    this.updateInteraction();
     this.onHover(id);
   }
 
@@ -293,13 +339,69 @@ export class GraphEngine {
       this.promote(id);
       this.drawFrame(id);
     }
+    this.updateInteraction();
+  }
+
+  /** Enlarged thumbnails stay put while their neighbors make room around them. */
+  private updateInteraction() {
+    for (const node of this.nodes.values()) {
+      const active = node.id === this.selected || node.id === this.hovered;
+      node.targetScale = active ? ACTIVE_SCALE : 1;
+    }
+
+    if (!this.layoutTransition) this.lockActiveNodes();
+    // Collision grows with the visible thumbnail, so only physical contact displaces a neighbor.
+    this.collide?.radius((d) => COLLISION_RADIUS * d.scale);
+    this.sim?.alpha(Math.max(this.sim.alpha(), 0.55)).restart();
+  }
+
+  private lockActiveNodes() {
+    const hovered = this.hovered ? this.nodes.get(this.hovered) : null;
+    if (hovered && hovered.id !== this.selected) this.nudgeHoveredPastPinned(hovered);
+
+    for (const node of this.nodes.values()) {
+      const active = node.id === this.selected || node.id === this.hovered;
+      if (active) {
+        // Preserve the visual position at the moment the thumbnail becomes active.
+        if (node.fx == null || node.fy == null) {
+          node.fx = node.x ?? 0;
+          node.fy = node.y ?? 0;
+        }
+      } else {
+        node.fx = undefined;
+        node.fy = undefined;
+      }
+    }
+  }
+
+  /** A new hover yields only when it would overlap an already pinned thumbnail. */
+  private nudgeHoveredPastPinned(hovered: Node) {
+    const pinned = this.selected ? this.nodes.get(this.selected) : null;
+    if (!pinned || pinned.id === hovered.id) return;
+
+    let dx = (hovered.x ?? 0) - (pinned.x ?? 0);
+    let dy = (hovered.y ?? 0) - (pinned.y ?? 0);
+    let distance = Math.hypot(dx, dy);
+    if (distance < 0.001) {
+      // A stable direction avoids a random jump if two nodes share a center.
+      dx = hovered.id < pinned.id ? -1 : 1;
+      dy = 0;
+      distance = 1;
+    }
+    const clearance = COLLISION_RADIUS * (hovered.targetScale + pinned.targetScale) + 2;
+    if (distance >= clearance) return;
+    const x = (pinned.x ?? 0) + (dx / distance) * clearance;
+    const y = (pinned.y ?? 0) + (dy / distance) * clearance;
+    hovered.x = x;
+    hovered.y = y;
+    hovered.vx = 0;
+    hovered.vy = 0;
   }
 
   private drawFrame(id: string) {
     const c = this.sprites.get(id);
     if (!c) return;
     const active = id === this.hovered || id === this.selected;
-    c.scale.set(active ? 1.7 : 1);
     const sprite = c.children[1] as Sprite;
     const frame = c.children[0] as Graphics;
     const w = sprite.width;
