@@ -6,6 +6,13 @@ import type { ImageNode } from "@/lib/data";
 import { GraphEngine, type GraphLayout } from "@/lib/graph-engine";
 import { asciiInkHex } from "@/lib/theme";
 
+declare global {
+  interface Window {
+    /** Testing hooks for the background ASCII effects; see Graph's mount effect. */
+    sightline?: { shimmer: () => string; pulse: () => string };
+  }
+}
+
 type Props = {
   images: ImageNode[];
   layout: GraphLayout;
@@ -41,8 +48,19 @@ export default function Graph({ images, layout, selectedId, onHover, onSelect }:
       const pulse = new AsciiPulse(pulseCanvasRef.current, asciiInkHex);
       pulseRef.current = pulse;
       engine.onView((points, width, height) => pulse.update(points, width, height));
+      // Console hooks for testing the effects: `sightline.shimmer()` / `sightline.pulse()`.
+      const report = (started: boolean, name: string) =>
+        started ? `${name} started` : `${name} can't run: ${pulse.blockedReason()}`;
+      window.sightline = {
+        shimmer: () => report(pulse.shimmer(), "shimmer"),
+        pulse: () => {
+          const c = engine.centerOnScreen();
+          return report(pulse.pulse(c.x, c.y), "pulse");
+        },
+      };
     });
     return () => {
+      delete window.sightline;
       engine.onView(null);
       engine.destroy();
       pulseRef.current?.destroy();
