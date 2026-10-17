@@ -1,5 +1,5 @@
 import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
-import { forceCollide, forceLink, forceSimulation, forceX, forceY, type ForceCollide, type Simulation, type SimulationNodeDatum } from "d3-force";
+import { forceCollide, forceSimulation, forceX, forceY, type ForceCollide, type Simulation, type SimulationNodeDatum } from "d3-force";
 import type { ImageNode } from "./data";
 import { RING_RADIUS, type Anchor, type Target } from "./layout";
 import { canvasHex, theme } from "./theme";
@@ -197,17 +197,16 @@ export class GraphEngine {
     this.sim?.stop();
     const collide = forceCollide<Node>()
       .radius((d) => COLLISION_RADIUS * d.scale)
-      .strength(1)
-      .iterations(3);
+      .strength(0.8)
+      .iterations(1);
     this.collide = collide;
     this.sim = forceSimulation<Node, Link>(nodes)
       .force("x", forceX<Node>((d) => d.tx).strength(0.09))
       .force("y", forceY<Node>((d) => d.ty).strength(0.09))
       .force("collide", collide)
-      .force("link", forceLink<Node, Link>(links).id((d) => d.id).distance(THUMB * 1.4).strength(0.003))
       .alpha(alpha)
-      .alphaDecay(0.03)
-      .velocityDecay(0.38)
+      .alphaDecay(0.02)
+      .velocityDecay(0.5)
       .on("tick", () => this.tick(links));
     this.updateInteraction();
   }
@@ -217,7 +216,7 @@ export class GraphEngine {
     for (const node of this.nodes.values()) {
       const delta = node.targetScale - node.scale;
       if (Math.abs(delta) > 0.001) {
-        node.scale += delta * 0.08;
+        node.scale += delta * 0.05;
         resized = true;
       } else {
         node.scale = node.targetScale;
@@ -227,7 +226,7 @@ export class GraphEngine {
       sprite?.scale.set(node.scale);
     }
     // d3 caches collision radii, so refresh them while thumbnails animate their size.
-    if (resized) this.collide?.radius((d) => COLLISION_RADIUS * Math.max(d.scale, d.targetScale));
+    if (resized) this.collide?.radius((d) => COLLISION_RADIUS * d.scale);
     if (this.layoutTransition && (this.sim?.alpha() ?? 1) < 0.04) {
       this.layoutTransition = false;
       this.lockActiveNodes();
@@ -351,8 +350,8 @@ export class GraphEngine {
     }
 
     if (!this.layoutTransition) this.lockActiveNodes();
-    // Reserve the final size immediately, so neighbors are already moving before growth is visible.
-    this.collide?.radius((d) => COLLISION_RADIUS * Math.max(d.scale, d.targetScale));
+    // Collision grows with the visible thumbnail, so only physical contact displaces a neighbor.
+    this.collide?.radius((d) => COLLISION_RADIUS * d.scale);
     this.sim?.alpha(Math.max(this.sim.alpha(), 0.55)).restart();
   }
 
