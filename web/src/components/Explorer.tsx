@@ -181,13 +181,13 @@ export default function Explorer() {
       {/* Title + filter card */}
       <section className="pointer-events-none absolute left-4 top-4 max-h-[calc(100dvh-5rem)] w-[min(360px,calc(100vw-2rem))] space-y-3 overflow-y-auto">
         <div className={`pointer-events-auto ${CARD} p-5`}>
-          <div className="flex items-baseline justify-between">
-            <h1 className="font-serif text-[28px] font-bold leading-none tracking-tight">
-              SightLine
-            </h1>
-            <span className="font-label text-[11px] text-muted">
-              {data.images.length} refs
-            </span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/sightlinelogo.svg" alt="" aria-hidden className="h-[37px] w-[37px] shrink-0" />
+              <h1 className="font-serif text-[28px] font-bold leading-none tracking-tight">SightLine</h1>
+            </div>
+            <span className="font-label text-[11px] text-muted">{data.images.length} refs</span>
           </div>
           <p className="mt-2 text-xs text-muted">
             References sorted by visual language, not subject.
@@ -331,13 +331,8 @@ function CategoryCard({
         {subs.map((s, i) => (
           <li key={s.id} className="py-2.5 text-xs">
             <div className="flex items-center gap-2">
-              <span className="w-4 shrink-0 font-label text-[10px] tabular-nums text-muted">
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <span className="font-medium uppercase tracking-[0.08em] text-fg">
-                {s.name}
-              </span>
-              <MethodBadge sub={s} />
+              <span className="w-4 shrink-0 font-label text-[10px] tabular-nums text-muted">{String(i + 1).padStart(2, "0")}</span>
+              <span className="font-medium uppercase tracking-[0.08em] text-fg">{s.name}</span>
             </div>
             <p className="mt-0.5 pl-6 text-muted">{s.definition}</p>
           </li>
@@ -347,30 +342,7 @@ function CategoryCard({
   );
 }
 
-function MethodBadge({ sub }: { sub: Subclass }) {
-  const measured = sub.pixel_weight > 0;
-  return (
-    <span
-      title={
-        measured
-          ? `${Math.round(sub.pixel_weight * 100)}% pixel math, rest SigLIP`
-          : "Scored by SigLIP only"
-      }
-      className="ml-auto rounded-full border border-border px-2 py-px font-label text-[10px] text-muted"
-    >
-      {measured ? "measured" : "perceived"}
-    </span>
-  );
-}
-
-function DetailCard({
-  image,
-  pinned,
-  categories,
-  filtered,
-  subsByCat,
-  onClose,
-}: {
+function DetailCard({ image, pinned, categories, filtered, subsByCat, onClose }: {
   image: ImageNode;
   pinned: boolean;
   categories: Category[];
