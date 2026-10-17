@@ -1,6 +1,7 @@
 import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { forceCollide, forceSimulation, forceX, forceY, type ForceCollide, type Simulation, type SimulationNodeDatum } from "d3-force";
 import type { ImageNode } from "./data";
+import type { ViewPoint } from "./ascii-pulse";
 import { RING_RADIUS, type Anchor, type Target } from "./layout";
 import { anchorColor, canvasHex, theme } from "./theme";
 
@@ -40,6 +41,7 @@ export class GraphEngine {
   private layoutTransition = false;
   private destroyed = false;
   private dragMoved = false;
+  private viewListener: ((points: ViewPoint[], width: number, height: number) => void) | null = null;
   private ready = false;
   private cleanup: (() => void)[] = [];
 
@@ -52,6 +54,8 @@ export class GraphEngine {
   async init() {
     await this.app.init({
       resizeTo: this.el,
+      // Opaque on purpose: a transparent canvas changes how the faint neighbour lines blend.
+      // The ASCII texture sits on top instead (see Graph.tsx).
       background: canvasHex,
       antialias: true,
       resolution: Math.min(window.devicePixelRatio || 1, 2),
@@ -90,6 +94,7 @@ export class GraphEngine {
       const s = Math.min(4, Math.max(0.2, this.world.scale.x * Math.exp(-e.deltaY * 0.0015)));
       this.world.scale.set(s);
       this.world.position.set(px - before.x * s, py - before.y * s);
+      this.emitView();
     };
     let drag: { x: number; y: number; wx: number; wy: number } | null = null;
     const onDown = (e: PointerEvent) => {
@@ -102,6 +107,7 @@ export class GraphEngine {
       const dy = e.clientY - drag.y;
       if (Math.abs(dx) + Math.abs(dy) > 3) this.dragMoved = true;
       this.world.position.set(drag.wx + dx, drag.wy + dy);
+      this.emitView();
     };
     const onUp = () => {
       drag = null;
@@ -116,7 +122,10 @@ export class GraphEngine {
     canvas.addEventListener("pointerdown", onDown);
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
-    const onResize = () => this.fit();
+    const onResize = () => {
+      this.fit();
+      this.emitView();
+    };
     this.app.renderer.on("resize", onResize);
     this.cleanup.push(() => {
       canvas.removeEventListener("wheel", onWheel);
@@ -258,6 +267,33 @@ export class GraphEngine {
         g.stroke({ width: 1.2, color: anchorColor(i), alpha: Math.min(0.7, 0.15 + (w - 0.4) * 1.4) });
       }
     });
+    this.emitView();
+  }
+
+  /** Where thumbnails, anchors and labels sit on screen right now (CSS px), for effects drawn around the graph. */
+  onView(listener: ((points: ViewPoint[], width: number, height: number) => void) | null) {
+    this.viewListener = listener;
+    this.emitView();
+  }
+
+  private emitView() {
+    if (!this.viewListener || !this.ready) return;
+    const s = this.world.scale.x;
+    const toScreen = (x: number, y: number, r: number): ViewPoint => ({ x: this.world.x + x * s, y: this.world.y + y * s, r: r * s });
+    const points: ViewPoint[] = [];
+    for (const node of this.nodes.values()) {
+      if (node.x == null || node.y == null) continue;
+      points.push(toScreen(node.x, node.y, (THUMB / 2) * node.scale));
+    }
+    // Subclass anchors and their name labels get open space too.
+    for (const a of this.layout.anchors) points.push(toScreen(a.x, a.y, 14));
+    for (const label of this.labelLayer.children) points.push(toScreen(label.x, label.y, label.width / 2));
+    this.viewListener(points, this.app.screen.width, this.app.screen.height);
+  }
+
+  /** The ring's center on screen, e.g. to start a background pulse when the filter changes. */
+  centerOnScreen() {
+    return { x: this.world.x, y: this.world.y };
   }
 
   private drawAnchors() {
