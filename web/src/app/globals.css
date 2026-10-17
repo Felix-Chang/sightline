@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+/* System fonts only, so the demo works offline. */
+@theme {
+  --font-sans: ui-sans-serif, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --color-ink: #121314;
+  --color-panel: #1b1d1f;
+  --color-line: #2c2f33;
+  --color-muted: #8b9096;
+  --color-paper: #ecebe6;
+  --color-accent: #e0484f;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-family: var(--font-sans);
+  overflow: hidden;
+}

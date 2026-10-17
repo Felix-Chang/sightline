@@ -1,0 +1,22 @@
+[project]
+name = "sightline-pipeline"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "opencv-python-headless>=4.10",
+  "scikit-image>=0.24",
+  "pillow>=10.4",
+  "torch>=2.4",
+  "transformers>=4.49",
+  "sentencepiece>=0.2",
+  "protobuf>=5",
+  "umap-learn>=0.5.6",
+  "supabase>=2.9",
+  "python-dotenv>=1.0",
+  "pyyaml>=6.0",
+  "pillow-heif>=0.18",
+]
+
+[tool.uv]
+package = false

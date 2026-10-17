@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sightline-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/felixchang/Desktop/sightline/web", "run", "dev"],
+      "port": 3000
+    }
+  ]
+}
