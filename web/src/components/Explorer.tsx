@@ -102,7 +102,7 @@ export default function Explorer() {
           </div>
           <p className="mt-2 text-xs text-muted">References sorted by visual language, not subject.</p>
 
-          <Eyebrow n="01" className="mt-5">Filter</Eyebrow>
+          <Eyebrow className="mt-5">Filter</Eyebrow>
           <div className="mt-2 flex flex-wrap gap-1.5">
             <FilterPill active={categoryId === ALL} onClick={() => setCategoryId(ALL)}>All</FilterPill>
             {categories.map((c) => (
@@ -148,12 +148,11 @@ function Centered({ children }: { children: React.ReactNode }) {
   return <main className="flex h-dvh flex-col items-center justify-center px-4 text-center">{children}</main>;
 }
 
-/** Numbered monospace label, e.g. "01  FILTER". */
-function Eyebrow({ n, children, className = "" }: { n: string; children: React.ReactNode; className?: string }) {
+/** Monospace section label, e.g. "FILTER". */
+function Eyebrow({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <p className={`font-mono text-[11px] uppercase tracking-[0.14em] text-muted ${className}`}>
-      <span className="text-accent">{n}</span>
-      <span className="ml-2">{children}</span>
+    <p className={`font-mono text-[11px] uppercase tracking-[0.14em] text-accent ${className}`}>
+      {children}
     </p>
   );
 }
@@ -175,10 +174,10 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
 function CategoryCard({ category, subs }: { category: Category; subs: Subclass[] }) {
   return (
     <div className={`pointer-events-auto ${CARD} p-5`}>
-      <Eyebrow n="02">{category.kind === "spectrum" ? "Spectrum" : "Qualities"}</Eyebrow>
-      <h2 className="mt-1.5 font-serif text-[26px] leading-tight">{category.name}</h2>
+      <h2 className="font-serif text-[26px] leading-tight">{category.name}</h2>
       {category.description && <p className="mt-1 text-xs text-muted">{category.description}</p>}
-      <ul className="mt-4 divide-y divide-border border-t border-border">
+      <Eyebrow className="mt-5">Type</Eyebrow>
+      <ul className="mt-2 divide-y divide-border border-t border-border">
         {subs.map((s, i) => (
           <li key={s.id} className="py-2.5 text-xs">
             <div className="flex items-center gap-2">
@@ -199,9 +198,7 @@ function MethodBadge({ sub }: { sub: Subclass }) {
   return (
     <span
       title={measured ? `${Math.round(sub.pixel_weight * 100)}% pixel math, rest SigLIP` : "Scored by SigLIP only"}
-      className={`ml-auto rounded-full border px-2 py-px font-mono text-[10px] ${
-        measured ? "border-border text-muted" : "border-accent/40 text-accent"
-      }`}
+      className="ml-auto rounded-full border border-border px-2 py-px font-mono text-[10px] text-muted"
     >
       {measured ? "measured" : "perceived"}
     </span>
