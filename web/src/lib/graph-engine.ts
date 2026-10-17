@@ -191,9 +191,11 @@ export class GraphEngine {
     }
     this.drawAnchors();
     const nodes = [...this.nodes.values()];
+    // Resolve to live nodes here: the simulation no longer runs forceLink, which used to be
+    // what swapped these ids for node objects, and tick() reads .x/.y straight off them.
     const links: Link[] = layout.links
       .filter(([a, b]) => this.nodes.has(a) && this.nodes.has(b))
-      .map(([source, target]) => ({ source, target }));
+      .map(([source, target]) => ({ source: this.nodes.get(source)!, target: this.nodes.get(target)! }));
     this.sim?.stop();
     const collide = forceCollide<Node>()
       .radius((d) => COLLISION_RADIUS * d.scale)
