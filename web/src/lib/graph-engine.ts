@@ -1,4 +1,4 @@
-import { Application, Assets, BlurFilter, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
+import { Application, Assets, Container, Graphics, NineSliceSprite, Sprite, Text, Texture } from "pixi.js";
 import { forceCollide, forceSimulation, forceX, forceY, type ForceCollide, type Simulation, type SimulationNodeDatum } from "d3-force";
 import type { ImageNode } from "./data";
 import type { ViewPoint } from "./ascii-pulse";
@@ -6,6 +6,14 @@ import { RING_RADIUS, type Anchor, type Target } from "./layout";
 import { anchorColor, canvasHex, theme } from "./theme";
 
 const THUMB = 64;
+// Drop shadow: one blurred shape is drawn to a canvas once and shared by every thumbnail as a
+// nine-slice sprite, so the blur is paid for a single time instead of once per sprite per frame.
+const SHADOW_PAD = 10;    // how far the shadow reaches past the thumbnail, in px
+const SHADOW_BLUR = 6;    // softness of the edge when the texture is drawn
+const SHADOW_RADIUS = 3;  // corner radius of the shape inside the texture
+const SHADOW_SLICE = SHADOW_PAD + 8; // nine-slice inset: the corner block that must not stretch
+const SHADOW_ALPHA = 0.18;
+const SHADOW_OFFSET = 2.5; // nudged down-right, as the old blurred Graphics was
 // Skeleton tiles: a warm gray a step darker than the paper, gently pulsing until the photo loads.
 const SKELETON_TINT = 0xdedbd2;
 const SKELETON_PULSE_SPEED = 0.004; // radians per ms (~1.6 s per breath)
@@ -36,6 +44,7 @@ export class GraphEngine {
   private labelLayer = new Container();
   private overlayLayer = new Container();
   private sprites = new Map<string, Container>();
+  private shadowTexture: Texture | null = null;
   private pending = new Set<string>();
   // Skeleton tiles still waiting for their thumbnail (value: pulse phase) and photos fading in.
   private skeletons = new Map<Sprite, number>();
@@ -433,6 +442,28 @@ export class GraphEngine {
     }
   };
 
+  /**
+   * The shared shadow, drawn once into a canvas. White so `tint` can colour it, and soft-edged
+   * via the 2D context's own shadow, which every browser supports.
+   */
+  private ensureShadowTexture(): Texture | null {
+    if (this.shadowTexture) return this.shadowTexture;
+    const size = THUMB + SHADOW_PAD * 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.fillStyle = "#fff";
+    ctx.shadowColor = "#fff";
+    ctx.shadowBlur = SHADOW_BLUR;
+    ctx.beginPath();
+    if (typeof ctx.roundRect === "function") ctx.roundRect(SHADOW_PAD, SHADOW_PAD, THUMB, THUMB, SHADOW_RADIUS);
+    else ctx.rect(SHADOW_PAD, SHADOW_PAD, THUMB, THUMB);
+    ctx.fill();
+    this.shadowTexture = Texture.from(canvas);
+    return this.shadowTexture;
+  }
+
   private thumbnailScreenBounds(node: Node, zoom: number) {
     const container = this.sprites.get(node.id);
     const sprite = container?.children[2] as Sprite | undefined;
@@ -461,8 +492,17 @@ export class GraphEngine {
       sprite.width = aspect >= 1 ? THUMB : THUMB * aspect;
       sprite.height = aspect >= 1 ? THUMB / aspect : THUMB;
       sprite.tint = SKELETON_TINT;
-      const shadow = new Graphics();
-      shadow.filters = [new BlurFilter({ strength: 4, quality: 2, padding: 12 })];
+      const shadowTexture = this.ensureShadowTexture();
+      const shadow = new NineSliceSprite({
+        texture: shadowTexture ?? Texture.EMPTY,
+        // Corners keep their shape; only the flat middle stretches to the thumbnail's size.
+        leftWidth: SHADOW_SLICE,
+        rightWidth: SHADOW_SLICE,
+        topHeight: SHADOW_SLICE,
+        bottomHeight: SHADOW_SLICE,
+      });
+      shadow.tint = theme.fg;
+      shadow.alpha = SHADOW_ALPHA;
       const frame = new Graphics();
       c.addChild(shadow, frame, sprite);
       c.label = img.id;
@@ -615,9 +655,6 @@ export class GraphEngine {
     this.resolveHoveredPinnedContact();
     for (const node of this.nodes.values()) {
       const container = this.sprites.get(node.id);
-      const shadow = container?.children[0] as Graphics | undefined;
-      const blur = shadow?.filters?.[0];
-      if (blur instanceof BlurFilter) blur.strength = 4 * node.scale;
       container?.position.set(node.x ?? 0, node.y ?? 0);
       container?.scale.set(node.scale);
       if (node.id === this.hovered || node.id === this.selected) this.drawFrame(node.id);
@@ -846,7 +883,7 @@ export class GraphEngine {
     const c = this.sprites.get(id);
     if (!c) return;
     const active = id === this.hovered || id === this.selected;
-    const shadow = c.children[0] as Graphics;
+    const shadow = c.children[0] as NineSliceSprite;
     const frame = c.children[1] as Graphics;
     const sprite = c.children[2] as Sprite;
     const w = sprite.width;
@@ -854,10 +891,10 @@ export class GraphEngine {
     const scaleProgress = Math.max(0, Math.min(1, ((this.nodes.get(id)?.scale ?? 1) - 1) / (ACTIVE_SCALE - 1)));
     const pad = active ? 3 * scaleProgress : 0;
     frame.clear();
-    shadow.clear();
-    shadow.position.set(2.5, 2.5);
-    // Match the expanding active frame so it never covers the shadow's source.
-    shadow.roundRect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2, 2 + pad).fill({ color: theme.fg, alpha: 0.2 });
+    const reach = pad + SHADOW_PAD;
+    shadow.width = w + reach * 2;
+    shadow.height = h + reach * 2;
+    shadow.position.set(-shadow.width / 2 + SHADOW_OFFSET, -shadow.height / 2 + SHADOW_OFFSET);
     if (active) {
       const selectionProgress = this.nodes.get(id)?.frameColorProgress ?? 0;
       // Finish the white-to-dark hover transition early in the size animation.
