@@ -12,6 +12,8 @@ import {
 import { anchorsFor, knnLinks, targetsFor, umapTargets } from "@/lib/layout";
 import type { GraphLayout } from "@/lib/graph-engine";
 import { anchorHex } from "@/lib/theme";
+import { CARD } from "@/lib/ui";
+import DropUpload from "./DropUpload";
 
 const Graph = dynamic(() => import("./Graph"), { ssr: false });
 
@@ -51,11 +53,16 @@ export default function Explorer() {
     setCategoryId(id);
   }, []);
 
-  useEffect(() => {
+  // Also called after an upload, so freshly scored images appear without a page reload.
+  const reload = useCallback(() => {
     loadDataset()
       .then(setData)
       .catch((e) => setError(String(e.message ?? e)));
   }, []);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   const categories = useMemo(
     () => (data?.categories ?? []).filter((c) => c.enabled),
@@ -179,14 +186,16 @@ export default function Explorer() {
           <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-fg">
             uv run python pipeline/batch.py data/images
           </code>{" "}
-          to add some.
+          to add some, or drop images anywhere on this page.
         </p>
+        <Uploader onIngested={reload} />
       </Centered>
     );
   }
 
   return (
     <main className="relative h-dvh w-full select-none">
+      <Uploader onIngested={reload} />
       <Graph
         images={data.images}
         layout={layout}
@@ -279,9 +288,14 @@ export default function Explorer() {
   );
 }
 
-// Shared card look: white sheet, hairline border, soft paper shadow (like the reel's light frames).
-const CARD =
-  "rounded-2xl border border-border bg-surface/95 shadow-[0_1px_2px_rgba(28,28,26,0.06),0_8px_24px_rgba(28,28,26,0.06)] backdrop-blur";
+/**
+ * Drag-and-drop ingest. Dev only: it posts to /api/ingest, which shells out to the Python
+ * pipeline, so it needs the models, uv and the service role key on the machine serving the app.
+ */
+function Uploader({ onIngested }: { onIngested: () => void }) {
+  if (process.env.NODE_ENV === "production") return null;
+  return <DropUpload onIngested={onIngested} />;
+}
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
