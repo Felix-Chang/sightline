@@ -92,30 +92,6 @@ export default function Explorer() {
     [category, subsByCat],
   );
 
-  // Active category display tracking for entrance (slide-down) and exit (slide-up) animations
-  const [prevCategory, setPrevCategory] = useState<Category | null>(null);
-  const [displayedCategory, setDisplayedCategory] = useState<Category | null>(null);
-  const [displayedSubs, setDisplayedSubs] = useState<Subclass[]>([]);
-  const [isClosingCategory, setIsClosingCategory] = useState(false);
-
-  if (category !== prevCategory) {
-    setPrevCategory(category);
-    if (category) {
-      setDisplayedCategory(category);
-      setDisplayedSubs(subs);
-      setIsClosingCategory(false);
-    } else if (displayedCategory) {
-      setIsClosingCategory(true);
-    }
-  }
-
-  const onCategoryAnimationEnd = useCallback(() => {
-    if (isClosingCategory) {
-      setDisplayedCategory(null);
-      setDisplayedSubs([]);
-      setIsClosingCategory(false);
-    }
-  }, [isClosingCategory]);
 
   const layout: GraphLayout = useMemo(() => {
     const images = data?.images ?? [];
@@ -285,21 +261,20 @@ export default function Explorer() {
           </div>
         </div>
 
-        {displayedCategory && (
-          <div
-            key={isClosingCategory ? "closing" : displayedCategory.id}
-            onAnimationEnd={onCategoryAnimationEnd}
-            className={`relative z-0 ${
-              isClosingCategory ? "animate-slide-up" : "animate-slide-down"
-            }`}
-          >
+        <div
+          key={categoryId}
+          className="relative z-0 animate-slide-down"
+        >
+          {category ? (
             <CategoryCard
-              category={displayedCategory}
-              subs={displayedSubs}
+              category={category}
+              subs={subs}
               images={data.images}
             />
-          </div>
-        )}
+          ) : (
+            <NoneCard totalRefs={data.images.length} />
+          )}
+        </div>
       </section>
 
       {/* Focus slider */}
@@ -522,6 +497,38 @@ function FilterPill({
     >
       {children}
     </button>
+  );
+}
+
+function NoneCard({ totalRefs }: { totalRefs: number }) {
+  return (
+    <div className={`pointer-events-auto ${CARD} p-5`}>
+      <div className="flex items-baseline justify-between">
+        <h2 className="font-serif text-[26px] font-bold leading-tight">
+          None
+        </h2>
+        <span className="rounded-full border border-border/70 bg-canvas px-2.5 py-0.5 font-label text-[10px] tabular-nums text-muted">
+          {totalRefs} refs
+        </span>
+      </div>
+      <p className="mt-1.5 text-xs text-muted leading-relaxed">
+        Nodes are connected to the other nodes that are similar in score.
+      </p>
+      <Eyebrow className="mt-5">Similarity Web</Eyebrow>
+      <div className="mt-2 rounded-xl border border-border bg-canvas/40 p-3 text-xs">
+        <div className="flex items-center justify-between">
+          <span className="font-medium uppercase tracking-[0.08em] text-fg text-[11px]">
+            K-Nearest Neighbors
+          </span>
+          <span className="rounded-full border border-border/70 bg-canvas px-2 py-0.5 font-label text-[10px] tabular-nums text-muted">
+            3 links / node
+          </span>
+        </div>
+        <p className="mt-1.5 text-muted leading-normal text-[11px]">
+          Click any reference node to trace its connections and spread its selection along connecting lines to similar images.
+        </p>
+      </div>
+    </div>
   );
 }
 

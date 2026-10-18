@@ -219,7 +219,18 @@ export class GraphEngine {
         }
       }
     };
-    const onUp = () => {
+    const onUp = (e: PointerEvent) => {
+      if (!this.dragMoved && this.selected && !this.hovered) {
+        const rect = canvas.getBoundingClientRect();
+        if (
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right &&
+          e.clientY >= rect.top &&
+          e.clientY <= rect.bottom
+        ) {
+          this.onSelect(null);
+        }
+      }
       drag = null;
       canvas.style.cursor = "grab";
       this.beginAutoPanToCluster();
@@ -793,7 +804,7 @@ export class GraphEngine {
 
   private clearInfection() {
     if (!this.infection) return;
-    const oldNeighbors = this.infection.neighborIds;
+    const oldNeighbors = [...this.infection.neighborIds];
     this.infection = null;
     for (const nid of oldNeighbors) {
       this.drawFrame(nid);
@@ -810,12 +821,8 @@ export class GraphEngine {
     const sourceNode = this.nodes.get(id);
     if (!sourceNode) return;
 
-    // Restore previous infection's neighbor frames if changing selection
-    if (this.infection) {
-      for (const nid of this.infection.neighborIds) {
-        if (nid !== id) this.drawFrame(nid);
-      }
-    }
+    // Save previous infection's neighbor frames to restore after switching
+    const oldNeighbors = this.infection ? [...this.infection.neighborIds] : [];
 
     // Find all links touching this node
     const incident: InfectedLink[] = [];
@@ -836,14 +843,22 @@ export class GraphEngine {
     const chosen = incident.slice(0, 3);
     const neighborIds = chosen.map((c) => c.target.id);
 
+    // Update infection state FIRST so drawFrame evaluates correctly
     this.infection = {
       sourceId: id,
       startTime: performance.now(),
-      duration: 520, // 520ms snappy fluid infection wave
+      duration: 650, // 650ms for line spread + perimeter wrap
       links: chosen,
       neighborIds,
       framesInfected: false,
     };
+
+    // Cleanly restore any old neighbors that are not in the new infection!
+    for (const nid of oldNeighbors) {
+      if (!neighborIds.includes(nid) && nid !== id) {
+        this.drawFrame(nid);
+      }
+    }
 
     // Immediately render first frame of infection
     this.drawEdges();
@@ -854,8 +869,8 @@ export class GraphEngine {
     const elapsed = performance.now() - this.infection.startTime;
     const rawT = Math.min(1, Math.max(0, elapsed / this.infection.duration));
 
-    // When the infection reaches destination images (at ~75%), infect their frames
-    if (rawT >= 0.75 && !this.infection.framesInfected) {
+    // When the perimeter infection is complete (rawT >= 1.0), lock destination frames to infected outline
+    if (rawT >= 1.0 && !this.infection.framesInfected) {
       this.infection.framesInfected = true;
       for (const nid of this.infection.neighborIds) {
         this.drawFrame(nid);
@@ -864,6 +879,105 @@ export class GraphEngine {
 
     this.drawEdges();
   };
+
+  /**
+   * Draw progressive rectangular perimeter infection wrapping from entry point around the thumbnail.
+   */
+  private drawPerimeterInfection(
+    g: Graphics,
+    cx: number,
+    cy: number,
+    w: number,
+    h: number,
+    fromX: number,
+    fromY: number,
+    progress: number,
+  ) {
+    if (progress <= 0) return;
+    const pad = 1.5;
+    const W = w + pad * 2;
+    const H = h + pad * 2;
+    const hw = W / 2;
+    const hh = H / 2;
+    const L = 2 * (W + H);
+    const halfL = W + H;
+
+    // Vector from thumbnail center toward the source node (fromX, fromY)
+    const vx = fromX - cx;
+    const vy = fromY - cy;
+
+    // Find the ray-box intersection with [-hw, hw] x [-hh, hh]
+    let entryX = 0;
+    let entryY = -hh;
+    if (Math.abs(vx) > 0.001 || Math.abs(vy) > 0.001) {
+      if (Math.abs(vx) * hh > Math.abs(vy) * hw) {
+        entryX = Math.sign(vx) * hw;
+        entryY = (vy / Math.abs(vx)) * hw;
+      } else {
+        entryY = Math.sign(vy) * hh;
+        entryX = (vx / Math.abs(vy)) * hh;
+      }
+    }
+
+    // Convert (entryX, entryY) to parameter s in [0, L) starting at Top-Left (-hw, -hh)
+    let s0 = 0;
+    if (Math.abs(entryY - (-hh)) < 0.5) {
+      s0 = entryX + hw;
+    } else if (Math.abs(entryX - hw) < 0.5) {
+      s0 = W + (entryY + hh);
+    } else if (Math.abs(entryY - hh) < 0.5) {
+      s0 = W + H + (hw - entryX);
+    } else {
+      s0 = 2 * W + H + (hh - entryY);
+    }
+
+    // Position on perimeter for parameter s
+    const pointAt = (s: number) => {
+      let normS = s % L;
+      if (normS < 0) normS += L;
+      if (normS <= W) {
+        return { x: cx - hw + normS, y: cy - hh };
+      } else if (normS <= W + H) {
+        return { x: cx + hw, y: cy - hh + (normS - W) };
+      } else if (normS <= 2 * W + H) {
+        return { x: cx + hw - (normS - W - H), y: cy + hh };
+      } else {
+        return { x: cx - hw, y: cy + hh - (normS - 2 * W - H) };
+      }
+    };
+
+    const dist = Math.min(halfL, progress * halfL);
+
+    if (progress >= 1) {
+      g.rect(cx - hw, cy - hh, W, H).stroke({ width: 1.5, color: theme.accent, alpha: 0.9 });
+      return;
+    }
+
+    const drawBeam = (startS: number, endS: number) => {
+      const pStart = pointAt(startS);
+      g.moveTo(pStart.x, pStart.y);
+      const step = 6;
+      const count = Math.ceil(Math.abs(endS - startS) / step);
+      for (let i = 1; i <= count; i++) {
+        const curS = startS + ((endS - startS) * i) / count;
+        const pt = pointAt(curS);
+        g.lineTo(pt.x, pt.y);
+      }
+    };
+
+    // Draw clockwise and counter-clockwise perimeter branches
+    drawBeam(s0, s0 + dist);
+    drawBeam(s0, s0 - dist);
+    g.stroke({ width: 1.8, color: theme.accent, alpha: 0.95 });
+
+    // Traveling sparks at the leading perimeter tips
+    const tipCW = pointAt(s0 + dist);
+    const tipCCW = pointAt(s0 - dist);
+    g.circle(tipCW.x, tipCW.y, 2).fill({ color: theme.accent });
+    g.circle(tipCW.x, tipCW.y, 0.9).fill({ color: 0xffffff });
+    g.circle(tipCCW.x, tipCCW.y, 2).fill({ color: theme.accent });
+    g.circle(tipCCW.x, tipCCW.y, 0.9).fill({ color: 0xffffff });
+  }
 
   private drawEdges() {
     const g = this.edgeLayer;
@@ -891,12 +1005,16 @@ export class GraphEngine {
       }
       g.stroke({ width: 1, color: theme.muted, alpha: infection ? 0.16 : 0.28 });
 
-      // Draw infected curves and propagating wave
+      // Draw infected curves and propagating perimeter wave
       if (infection && infection.links.length > 0) {
         const elapsed = performance.now() - infection.startTime;
         const rawT = Math.min(1, Math.max(0, elapsed / infection.duration));
-        // Ease-out cubic: fast burst out of clicked image, smooth cushion arriving at target images
-        const p = 1 - Math.pow(1 - rawT, 3);
+        // Line reaches node during first 55% of duration
+        const lineT = Math.min(1, rawT / 0.55);
+        const pLine = 1 - Math.pow(1 - lineT, 3);
+        // Perimeter infection wraps around connected node from 50% to 100%
+        const perimT = Math.min(1, Math.max(0, (rawT - 0.5) / 0.5));
+        const pPerim = 1 - Math.pow(1 - perimT, 2);
 
         for (const il of infection.links) {
           const S = il.source;
@@ -912,36 +1030,36 @@ export class GraphEngine {
           const p1x = mx * 0.9;
           const p1y = my * 0.9;
 
-          if (p >= 1) {
+          if (pLine >= 1) {
             // Full infection line in selection color (theme.accent = #c8312f)
             g.moveTo(p0x, p0y).quadraticCurveTo(p1x, p1y, p2x, p2y);
             g.stroke({ width: 2.2, color: theme.accent, alpha: 0.92 });
           } else {
-            // De Casteljau sub-curve from t=0 to t=p
+            // Progressive line wave
             const q0x = p0x;
             const q0y = p0y;
-            const q1x = (1 - p) * p0x + p * p1x;
-            const q1y = (1 - p) * p0y + p * p1y;
-            const q2x = (1 - p) * (1 - p) * p0x + 2 * (1 - p) * p * p1x + p * p * p2x;
-            const q2y = (1 - p) * (1 - p) * p0y + 2 * (1 - p) * p * p1y + p * p * p2y;
+            const q1x = (1 - pLine) * p0x + pLine * p1x;
+            const q1y = (1 - pLine) * p0y + pLine * p1y;
+            const q2x = (1 - pLine) * (1 - pLine) * p0x + 2 * (1 - pLine) * pLine * p1x + pLine * pLine * p2x;
+            const q2y = (1 - pLine) * (1 - pLine) * p0y + 2 * (1 - pLine) * pLine * p1y + pLine * pLine * p2y;
 
             // Infected trail
             g.moveTo(q0x, q0y).quadraticCurveTo(q1x, q1y, q2x, q2y);
             g.stroke({ width: 2.4, color: theme.accent, alpha: 0.96 });
 
             // Glowing infection spark at the leading tip (q2)
-            g.circle(q2x, q2y, 6).fill({ color: theme.accent, alpha: 0.28 });
+            g.circle(q2x, q2y, 5.5).fill({ color: theme.accent, alpha: 0.28 });
             g.circle(q2x, q2y, 3.2).fill({ color: theme.accent, alpha: 1.0 });
             g.circle(q2x, q2y, 1.2).fill({ color: 0xffffff, alpha: 0.9 });
           }
 
-          // Arrival shockwave ring as wave strikes the target image
-          if (rawT >= 0.65) {
-            const arrT = (rawT - 0.65) / 0.35;
-            const easeArr = 1 - Math.pow(1 - arrT, 2);
-            const ringRadius = THUMB * 0.42 + easeArr * 20;
-            const ringAlpha = (1 - arrT) * 0.75;
-            g.circle(p2x, p2y, ringRadius).stroke({ width: 1.8, color: theme.accent, alpha: ringAlpha });
+          // Animate infection wrapping around the perimeter of the target node (no pop!)
+          if (rawT >= 0.5) {
+            const container = this.sprites.get(N.id);
+            const sprite = container?.children[2] as Sprite | undefined;
+            const nw = (sprite?.width ?? THUMB) * N.scale;
+            const nh = (sprite?.height ?? THUMB) * N.scale;
+            this.drawPerimeterInfection(g, p2x, p2y, nw, nh, p0x, p0y, pPerim);
           }
         }
       }
@@ -1042,15 +1160,16 @@ export class GraphEngine {
       // Finish the white-to-dark hover transition early in the size animation.
       const hoverColor = this.blendColor(theme.surface, theme.fg, Math.min(1, scaleProgress * 3));
       const color = this.blendColor(hoverColor, theme.accent, selectionProgress);
-      frame.rect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2).fill({ color });
+      // Selected image gets a prominent, bold outline
+      const activePad = id === this.selected ? 3.5 * scaleProgress : pad;
+      frame.rect(-w / 2 - activePad, -h / 2 - activePad, w + activePad * 2, h + activePad * 2).fill({ color });
     } else if (isInfectedNeighbor) {
-      // Infected destination node: accented frame border with subtle corner node
-      frame.rect(-w / 2 - 2, -h / 2 - 2, w + 4, h + 4).stroke({
-        width: 1.8,
+      // Infected destination node: distinguishable hairline outline, lighter than selected
+      frame.rect(-w / 2 - 1.5, -h / 2 - 1.5, w + 3, h + 3).stroke({
+        width: 1.5,
         color: theme.accent,
         alpha: 0.9,
       });
-      frame.circle(w / 2, -h / 2, 2.5).fill({ color: theme.accent });
     } else {
       frame.rect(-w / 2 - 0.5, -h / 2 - 0.5, w + 1, h + 1).stroke({ width: 1, color: theme.surface });
     }
