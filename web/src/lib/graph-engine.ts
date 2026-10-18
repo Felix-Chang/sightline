@@ -16,6 +16,7 @@ type Node = SimulationNodeDatum & {
   weights: number[];
   scale: number;
   targetScale: number;
+  frameColorProgress: number;
 };
 type Link = { source: string | Node; target: string | Node };
 
@@ -236,7 +237,7 @@ export class GraphEngine {
         sprite.scale.set(s);
         sprite.anchor.set(0.5);
         const shadow = new Graphics();
-        shadow.filters = [new BlurFilter({ strength: 3, quality: 1, padding: 8 })];
+        shadow.filters = [new BlurFilter({ strength: 4, quality: 2, padding: 12 })];
         const frame = new Graphics();
         c.addChild(shadow, frame, sprite);
         c.label = img.id;
@@ -260,6 +261,7 @@ export class GraphEngine {
           weights: [],
           scale: 1,
           targetScale: 1,
+          frameColorProgress: 0,
         });
         this.drawFrame(img.id);
       }),
@@ -318,15 +320,24 @@ export class GraphEngine {
       } else {
         node.scale = node.targetScale;
       }
+      const colorTarget = node.id === this.selected ? 1 : 0;
+      const colorDelta = colorTarget - node.frameColorProgress;
+      node.frameColorProgress = Math.abs(colorDelta) > 0.001
+        ? node.frameColorProgress + colorDelta * 0.12
+        : colorTarget;
     }
     // A hovered neighbor yields only once its growing frame reaches a pinned
     // thumbnail. Moving it in tiny steps keeps the selected image anchored and
     // avoids the old one-frame clearance jump.
     this.resolveHoveredPinnedContact();
     for (const node of this.nodes.values()) {
-      const sprite = this.sprites.get(node.id);
-      sprite?.position.set(node.x ?? 0, node.y ?? 0);
-      sprite?.scale.set(node.scale);
+      const container = this.sprites.get(node.id);
+      const shadow = container?.children[0] as Graphics | undefined;
+      const blur = shadow?.filters?.[0];
+      if (blur instanceof BlurFilter) blur.strength = 4 * node.scale;
+      container?.position.set(node.x ?? 0, node.y ?? 0);
+      container?.scale.set(node.scale);
+      if (node.id === this.hovered || node.id === this.selected) this.drawFrame(node.id);
     }
     // d3 caches collision radii, so refresh them while thumbnails animate their size.
     if (resized) this.collide?.radius((d) => COLLISION_RADIUS * d.scale);
@@ -557,16 +568,31 @@ export class GraphEngine {
     const sprite = c.children[2] as Sprite;
     const w = sprite.width;
     const h = sprite.height;
+    const scaleProgress = Math.max(0, Math.min(1, ((this.nodes.get(id)?.scale ?? 1) - 1) / (ACTIVE_SCALE - 1)));
+    const pad = active ? 3 * scaleProgress : 0;
     frame.clear();
     shadow.clear();
     shadow.position.set(2.5, 2.5);
-    shadow.roundRect(-w / 2, -h / 2, w, h, 2).fill({ color: theme.fg, alpha: 0.2 });
+    // Match the expanding active frame so it never covers the shadow's source.
+    shadow.roundRect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2, 2 + pad).fill({ color: theme.fg, alpha: 0.2 });
     if (active) {
-      const pad = id === this.selected ? 3 : 2;
-      frame.rect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2).fill({ color: id === this.selected ? theme.accent : theme.fg });
+      const selectionProgress = this.nodes.get(id)?.frameColorProgress ?? 0;
+      // Finish the white-to-dark hover transition early in the size animation.
+      const hoverColor = this.blendColor(theme.surface, theme.fg, Math.min(1, scaleProgress * 3));
+      const color = this.blendColor(hoverColor, theme.accent, selectionProgress);
+      frame.rect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2).fill({ color });
     } else {
       frame.rect(-w / 2 - 0.5, -h / 2 - 0.5, w + 1, h + 1).stroke({ width: 1, color: theme.surface });
     }
+  }
+
+  private blendColor(from: number, to: number, amount: number) {
+    const mix = (shift: number) => {
+      const start = (from >> shift) & 0xff;
+      const end = (to >> shift) & 0xff;
+      return Math.round(start + (end - start) * amount);
+    };
+    return (mix(16) << 16) | (mix(8) << 8) | mix(0);
   }
 
   destroy() {
