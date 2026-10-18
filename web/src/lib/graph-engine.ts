@@ -970,7 +970,7 @@ export class GraphEngine {
     const dist = Math.min(halfL, progress * halfL);
 
     if (progress >= 1) {
-      g.rect(cx - hw, cy - hh, W, H).stroke({ width: 1.5, color: theme.accent, alpha: 0.95 });
+      g.rect(cx - hw, cy - hh, W, H).stroke({ width: 2.4, color: theme.accent, alpha: 0.95 });
       return;
     }
 
@@ -989,15 +989,15 @@ export class GraphEngine {
     // Draw clockwise and counter-clockwise perimeter branches
     drawBeam(s0, s0 + dist);
     drawBeam(s0, s0 - dist);
-    g.stroke({ width: 2.0, color: theme.accent, alpha: 0.96 });
+    g.stroke({ width: 2.6, color: theme.accent, alpha: 0.96 });
 
     // Traveling sparks at the leading perimeter tips
     const tipCW = pointAt(s0 + dist);
     const tipCCW = pointAt(s0 - dist);
-    g.circle(tipCW.x, tipCW.y, 2.4).fill({ color: theme.accent });
-    g.circle(tipCW.x, tipCW.y, 1.0).fill({ color: 0xffffff });
-    g.circle(tipCCW.x, tipCCW.y, 2.4).fill({ color: theme.accent });
-    g.circle(tipCCW.x, tipCCW.y, 1.0).fill({ color: 0xffffff });
+    g.circle(tipCW.x, tipCW.y, 2.8).fill({ color: theme.accent });
+    g.circle(tipCW.x, tipCW.y, 1.2).fill({ color: 0xffffff });
+    g.circle(tipCCW.x, tipCCW.y, 2.8).fill({ color: theme.accent });
+    g.circle(tipCCW.x, tipCCW.y, 1.2).fill({ color: 0xffffff });
   }
 
   private drawEdges() {
@@ -1194,11 +1194,11 @@ export class GraphEngine {
       const activePad = id === this.selected ? 3.5 * scaleProgress : pad;
       frame.rect(-w / 2 - activePad, -h / 2 - activePad, w + activePad * 2, h + activePad * 2).fill({ color });
     } else if (isNeighborColored) {
-      // Temporarily color over the white outline on neighbor nodes so no white line bleeds through
+      // Temporarily color over the white outline on neighbor nodes with a clearer, bolder 2.4px outline
       frame.rect(-w / 2 - 0.5, -h / 2 - 0.5, w + 1, h + 1).stroke({
-        width: 1.5,
+        width: 2.4,
         color: theme.accent,
-        alpha: this.infection?.framesInfected ? 0.95 : 0.6,
+        alpha: this.infection?.framesInfected ? 0.95 : 0.65,
       });
     } else {
       frame.rect(-w / 2 - 0.5, -h / 2 - 0.5, w + 1, h + 1).stroke({ width: 1, color: theme.surface });
