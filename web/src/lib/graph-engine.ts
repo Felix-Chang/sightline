@@ -1,4 +1,4 @@
-import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
+import { Application, Assets, BlurFilter, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { forceCollide, forceSimulation, forceX, forceY, type ForceCollide, type Simulation, type SimulationNodeDatum } from "d3-force";
 import type { ImageNode } from "./data";
 import type { ViewPoint } from "./ascii-pulse";
@@ -207,7 +207,7 @@ export class GraphEngine {
 
   private thumbnailScreenBounds(node: Node, zoom: number) {
     const container = this.sprites.get(node.id);
-    const sprite = container?.children[1] as Sprite | undefined;
+    const sprite = container?.children[2] as Sprite | undefined;
     const pad = node.id === this.selected ? 3 : node.id === this.hovered ? 2 : 0.5;
     return {
       x: ((sprite?.width ?? THUMB) / 2 + pad) * node.scale * zoom,
@@ -235,8 +235,10 @@ export class GraphEngine {
         const s = THUMB / Math.max(tex.width, tex.height);
         sprite.scale.set(s);
         sprite.anchor.set(0.5);
+        const shadow = new Graphics();
+        shadow.filters = [new BlurFilter({ strength: 3, quality: 1, padding: 8 })];
         const frame = new Graphics();
-        c.addChild(frame, sprite);
+        c.addChild(shadow, frame, sprite);
         c.label = img.id;
         c.eventMode = "static";
         c.cursor = "pointer";
@@ -550,18 +552,20 @@ export class GraphEngine {
     const c = this.sprites.get(id);
     if (!c) return;
     const active = id === this.hovered || id === this.selected;
-    const sprite = c.children[1] as Sprite;
-    const frame = c.children[0] as Graphics;
+    const shadow = c.children[0] as Graphics;
+    const frame = c.children[1] as Graphics;
+    const sprite = c.children[2] as Sprite;
     const w = sprite.width;
     const h = sprite.height;
     frame.clear();
-    // Soft paper shadow under every thumbnail so white posters still read on the light canvas.
-    frame.rect(-w / 2 + 1, -h / 2 + 2.5, w, h).fill({ color: theme.fg, alpha: 0.12 });
+    shadow.clear();
+    shadow.position.set(2.5, 2.5);
+    shadow.roundRect(-w / 2, -h / 2, w, h, 2).fill({ color: theme.fg, alpha: 0.2 });
     if (active) {
       const pad = id === this.selected ? 3 : 2;
       frame.rect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2).fill({ color: id === this.selected ? theme.accent : theme.fg });
     } else {
-      frame.rect(-w / 2 - 0.5, -h / 2 - 0.5, w + 1, h + 1).stroke({ width: 1, color: theme.border });
+      frame.rect(-w / 2 - 0.5, -h / 2 - 0.5, w + 1, h + 1).stroke({ width: 1, color: theme.surface });
     }
   }
 
