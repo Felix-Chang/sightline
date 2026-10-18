@@ -30,3 +30,34 @@ body {
   font-family: var(--font-sans);
   overflow: hidden;
 }
+
+@keyframes slideDownFromCard {
+  0% {
+    opacity: 0;
+    transform: translateY(-32px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-down {
+  animation: slideDownFromCard 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideInFromRight {
+  0% {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInFromRight 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+

@@ -215,7 +215,7 @@ export default function Explorer() {
 
       {/* Title + filter card */}
       <section className="pointer-events-none absolute left-4 top-4 max-h-[calc(100dvh-5rem)] w-[min(360px,calc(100vw-2rem))] space-y-3 overflow-y-auto">
-        <div className={`pointer-events-auto ${CARD} p-5`}>
+        <div className={`pointer-events-auto relative z-10 ${CARD} p-5`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -256,7 +256,11 @@ export default function Explorer() {
           </div>
         </div>
 
-        {category && <CategoryCard category={category} subs={subs} />}
+        {category && (
+          <div key={category.id} className="relative z-0 animate-slide-down">
+            <CategoryCard category={category} subs={subs} images={data.images} />
+          </div>
+        )}
       </section>
 
       {/* Focus slider */}
@@ -279,20 +283,32 @@ export default function Explorer() {
         </div>
       )}
 
-      {/* Carded like the slider so the background texture never runs through the text. */}
-      <p
-        className={`absolute bottom-4 right-4 hidden w-[min(340px,calc(100vw-2rem))] justify-between gap-3 ${CARD} px-4 py-2.5 font-label text-[11px] text-muted md:flex`}
+      {/* Carded pill for interactions & shortcuts */}
+      <div
+        className={`absolute bottom-4 right-4 hidden items-center gap-2.5 ${CARD} px-3.5 py-2 font-label text-[11px] text-muted transition-all duration-200 ease-out md:flex ${
+          detail
+            ? "pointer-events-none translate-y-2 opacity-0"
+            : "translate-y-0 opacity-100"
+        }`}
       >
         <span>Scroll to zoom</span>
-        <span aria-hidden>|</span>
+        <span className="text-border" aria-hidden>·</span>
         <span>Drag to pan</span>
-        <span aria-hidden>|</span>
-        <span>← → Change filters</span>
-      </p>
+        <span className="text-border" aria-hidden>·</span>
+        <span className="flex items-center gap-1">
+          <kbd className="rounded border border-border bg-canvas px-1.5 py-0.5 font-mono text-[9px] font-semibold text-fg shadow-xs">F</kbd>
+          <span>fit view</span>
+        </span>
+        <span className="text-border" aria-hidden>·</span>
+        <span className="flex items-center gap-1">
+          <kbd className="rounded border border-border bg-canvas px-1.5 py-0.5 font-mono text-[9px] font-semibold text-fg shadow-xs">←</kbd>
+          <kbd className="rounded border border-border bg-canvas px-1.5 py-0.5 font-mono text-[9px] font-semibold text-fg shadow-xs">→</kbd>
+          <span>filters</span>
+        </span>
+      </div>
 
       {detail && (
         <DetailCard
-          key={detail.id}
           image={detail}
           pinned={detail.id === selectedId}
           categories={category ? [category] : categories}
@@ -370,10 +386,32 @@ function FilterPill({
 function CategoryCard({
   category,
   subs,
+  images = [],
 }: {
   category: Category;
   subs: Subclass[];
+  images?: ImageNode[];
 }) {
+  const counts = useMemo(() => {
+    const map = new Map<string, number>();
+    subs.forEach((s) => map.set(s.id, 0));
+    for (const img of images) {
+      let bestSub = "";
+      let maxScore = -1;
+      for (const s of subs) {
+        const score = img.scores[s.id] ?? 0;
+        if (score > maxScore) {
+          maxScore = score;
+          bestSub = s.id;
+        }
+      }
+      if (bestSub && maxScore > 0) {
+        map.set(bestSub, (map.get(bestSub) ?? 0) + 1);
+      }
+    }
+    return map;
+  }, [images, subs]);
+
   return (
     <div className={`pointer-events-auto ${CARD} p-5`}>
       <h2 className="font-serif text-[26px] font-bold leading-tight">
@@ -389,6 +427,9 @@ function CategoryCard({
             <div className="flex items-center gap-2">
               <span className="w-4 shrink-0 font-label text-[10px] tabular-nums text-muted">{String(i + 1).padStart(2, "0")}</span>
               <span className="font-medium uppercase tracking-[0.08em] text-fg">{s.name}</span>
+              <span className="ml-auto rounded-full border border-border/70 bg-canvas/60 px-2 py-0.5 font-label text-[10px] tabular-nums text-muted">
+                {counts.get(s.id) ?? 0} refs
+              </span>
             </div>
             <p className="mt-0.5 pl-6 text-muted">{s.definition}</p>
           </li>
@@ -408,7 +449,7 @@ function DetailCard({ image, pinned, categories, filtered, subsByCat, onClose }:
 }) {
   return (
     <aside
-      className={`absolute right-4 top-4 flex max-h-[calc(100dvh-2rem)] w-[min(340px,calc(100vw-2rem))] flex-col overflow-hidden ${CARD}`}
+      className={`pointer-events-auto absolute right-4 top-4 z-20 flex max-h-[calc(100dvh-2rem)] w-[min(340px,calc(100vw-2rem))] flex-col overflow-hidden animate-slide-in-right ${CARD}`}
     >
       <div className="border-b border-border bg-canvas p-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -418,7 +459,7 @@ function DetailCard({ image, pinned, categories, filtered, subsByCat, onClose }:
           className="mx-auto max-h-60 object-contain shadow-sm"
         />
       </div>
-      <div className="overflow-y-auto p-5">
+      <div key={image.id} className="overflow-y-auto p-5">
         <div className="flex items-start justify-between gap-2">
           <p className="truncate font-mono text-[11px] text-muted">
             {image.filename}

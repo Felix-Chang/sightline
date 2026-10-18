@@ -39,6 +39,16 @@ export class GraphEngine {
   private selected: string | null = null;
   private hovered: string | null = null;
   private autoPanTarget: { x: number; y: number } | null = null;
+  private cameraTransition: {
+    startX: number;
+    startY: number;
+    startScale: number;
+    targetX: number;
+    targetY: number;
+    targetScale: number;
+    startTime: number;
+    duration: number;
+  } | null = null;
   private layoutTransition = false;
   private destroyed = false;
   private dragMoved = false;
@@ -73,22 +83,50 @@ export class GraphEngine {
     this.fit();
     this.enablePanZoom();
     this.app.ticker.add(this.advanceAutoPan);
-    this.cleanup.push(() => this.app.ticker.remove(this.advanceAutoPan));
+    this.app.ticker.add(this.advanceCameraTransition);
+    this.cleanup.push(() => {
+      this.app.ticker.remove(this.advanceAutoPan);
+      this.app.ticker.remove(this.advanceCameraTransition);
+    });
     this.ready = true;
   }
 
   /** Fit the ring into the space right of the filter panel (full width on narrow screens). */
-  private fit() {
+  private fit(smooth = false) {
     const { width, height } = this.app.screen;
     const inset = width >= 760 ? 380 : 0;
     const usable = width - inset;
-    this.world.scale.set(Math.min(usable, height) / (RING_RADIUS * 2 + 340));
-    this.world.position.set(inset + usable / 2, height / 2);
+    const targetScale = Math.min(usable, height) / (RING_RADIUS * 2 + 340);
+    const targetX = inset + usable / 2;
+    const targetY = height / 2;
+
+    if (!smooth) {
+      this.cameraTransition = null;
+      this.autoPanTarget = null;
+      this.world.scale.set(targetScale);
+      this.world.position.set(targetX, targetY);
+      return;
+    }
+
+    this.autoPanTarget = null;
+    this.cameraTransition = {
+      startX: this.world.x,
+      startY: this.world.y,
+      startScale: this.world.scale.x,
+      targetX,
+      targetY,
+      targetScale,
+      startTime: performance.now(),
+      duration: 420,
+    };
   }
 
   private enablePanZoom() {
     const canvas = this.app.canvas;
+    canvas.style.cursor = "grab";
+
     const onWheel = (e: WheelEvent) => {
+      this.cameraTransition = null;
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
       const px = e.clientX - rect.left;
@@ -105,9 +143,11 @@ export class GraphEngine {
     };
     let drag: { x: number; y: number; wx: number; wy: number } | null = null;
     const onDown = (e: PointerEvent) => {
+      this.cameraTransition = null;
       this.autoPanTarget = null;
       drag = { x: e.clientX, y: e.clientY, wx: this.world.x, wy: this.world.y };
       this.dragMoved = false;
+      canvas.style.cursor = "grabbing";
     };
     const onMove = (e: PointerEvent) => {
       if (!drag) return;
@@ -120,6 +160,16 @@ export class GraphEngine {
     };
     const onUp = () => {
       drag = null;
+      canvas.style.cursor = "grab";
+    };
+    const onDblClick = () => {
+      this.fit(true);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA") return;
+      if (e.key === "f" || e.key === "F" || e.key === "0") {
+        this.fit(true);
+      }
     };
     // Taps on empty canvas clear the selection; Pixi only targets the stage when no thumbnail was hit.
     this.app.stage.eventMode = "static";
@@ -129,8 +179,10 @@ export class GraphEngine {
     });
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("dblclick", onDblClick);
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("keydown", onKey);
     const onResize = () => {
       this.fit();
       this.emitView();
@@ -139,8 +191,10 @@ export class GraphEngine {
     this.cleanup.push(() => {
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("pointerdown", onDown);
+      canvas.removeEventListener("dblclick", onDblClick);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("keydown", onKey);
     });
   }
 
@@ -187,6 +241,7 @@ export class GraphEngine {
 
   /** Ease toward the nearest valid camera position without changing zoom. */
   private advanceAutoPan = () => {
+    if (this.cameraTransition) return;
     const target = this.autoPanTarget;
     if (!target) return;
     const dx = target.x - this.world.x;
@@ -203,6 +258,28 @@ export class GraphEngine {
     const step = Math.min(80, Math.max(0.5, distance * 0.16));
     this.world.position.set(this.world.x + (dx / distance) * step, this.world.y + (dy / distance) * step);
     this.emitView();
+  };
+
+  /** Smoothly glide camera position and zoom to the target fit state. */
+  private advanceCameraTransition = () => {
+    const anim = this.cameraTransition;
+    if (!anim) return;
+    const elapsed = performance.now() - anim.startTime;
+    const t = Math.min(1, Math.max(0, elapsed / anim.duration));
+    // Quartic ease-out: brisk start that gently cushions to a stop
+    const ease = 1 - Math.pow(1 - t, 4);
+
+    const currentX = anim.startX + (anim.targetX - anim.startX) * ease;
+    const currentY = anim.startY + (anim.targetY - anim.startY) * ease;
+    const currentScale = anim.startScale + (anim.targetScale - anim.startScale) * ease;
+
+    this.world.scale.set(currentScale);
+    this.world.position.set(currentX, currentY);
+    this.emitView();
+
+    if (t >= 1) {
+      this.cameraTransition = null;
+    }
   };
 
   private thumbnailScreenBounds(node: Node, zoom: number) {
