@@ -1,4 +1,4 @@
-import { Application, Assets, BlurFilter, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
+import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { forceCollide, forceSimulation, forceX, forceY, type ForceCollide, type Simulation, type SimulationNodeDatum } from "d3-force";
 import type { ImageNode } from "./data";
 import type { ViewPoint } from "./ascii-pulse";
@@ -435,7 +435,7 @@ export class GraphEngine {
 
   private thumbnailScreenBounds(node: Node, zoom: number) {
     const container = this.sprites.get(node.id);
-    const sprite = container?.children[2] as Sprite | undefined;
+    const sprite = container?.children[1] as Sprite | undefined;
     const pad = node.id === this.selected ? 3 : node.id === this.hovered ? 2 : 0.5;
     return {
       x: ((sprite?.width ?? THUMB) / 2 + pad) * node.scale * zoom,
@@ -461,10 +461,8 @@ export class GraphEngine {
       sprite.width = aspect >= 1 ? THUMB : THUMB * aspect;
       sprite.height = aspect >= 1 ? THUMB / aspect : THUMB;
       sprite.tint = SKELETON_TINT;
-      const shadow = new Graphics();
-      shadow.filters = [new BlurFilter({ strength: 4, quality: 2, padding: 12 })];
       const frame = new Graphics();
-      c.addChild(shadow, frame, sprite);
+      c.addChild(frame, sprite);
       c.label = img.id;
       c.eventMode = "static";
       c.cursor = "pointer";
@@ -615,9 +613,6 @@ export class GraphEngine {
     this.resolveHoveredPinnedContact();
     for (const node of this.nodes.values()) {
       const container = this.sprites.get(node.id);
-      const shadow = container?.children[0] as Graphics | undefined;
-      const blur = shadow?.filters?.[0];
-      if (blur instanceof BlurFilter) blur.strength = 4 * node.scale;
       container?.position.set(node.x ?? 0, node.y ?? 0);
       container?.scale.set(node.scale);
       if (node.id === this.hovered || node.id === this.selected) this.drawFrame(node.id);
@@ -846,18 +841,13 @@ export class GraphEngine {
     const c = this.sprites.get(id);
     if (!c) return;
     const active = id === this.hovered || id === this.selected;
-    const shadow = c.children[0] as Graphics;
-    const frame = c.children[1] as Graphics;
-    const sprite = c.children[2] as Sprite;
+    const frame = c.children[0] as Graphics;
+    const sprite = c.children[1] as Sprite;
     const w = sprite.width;
     const h = sprite.height;
     const scaleProgress = Math.max(0, Math.min(1, ((this.nodes.get(id)?.scale ?? 1) - 1) / (ACTIVE_SCALE - 1)));
     const pad = active ? 3 * scaleProgress : 0;
     frame.clear();
-    shadow.clear();
-    shadow.position.set(2.5, 2.5);
-    // Match the expanding active frame so it never covers the shadow's source.
-    shadow.roundRect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2, 2 + pad).fill({ color: theme.fg, alpha: 0.2 });
     if (active) {
       const selectionProgress = this.nodes.get(id)?.frameColorProgress ?? 0;
       // Finish the white-to-dark hover transition early in the size animation.
