@@ -91,7 +91,10 @@ export class GraphEngine {
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
       const before = { x: (px - this.world.x) / this.world.scale.x, y: (py - this.world.y) / this.world.scale.y };
-      const s = Math.min(4, Math.max(0.2, this.world.scale.x * Math.exp(-e.deltaY * 0.0015)));
+      const { width, height } = this.app.screen;
+      const usable = width - (width >= 760 ? 380 : 0);
+      const minScale = (Math.min(usable, height) * (2 / 3)) / (RING_RADIUS * 2 + 340);
+      const s = Math.min(4, Math.max(minScale, this.world.scale.x * Math.exp(-e.deltaY * 0.0015)));
       this.world.scale.set(s);
       this.world.position.set(px - before.x * s, py - before.y * s);
       this.emitView();
