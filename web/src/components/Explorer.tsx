@@ -293,11 +293,7 @@ export default function Explorer() {
               isClosingCategory ? "animate-slide-up" : "animate-slide-down"
             }`}
           >
-            <CategoryCard
-              category={displayedCategory}
-              subs={displayedSubs}
-              images={data.images}
-            />
+            <CategoryCard category={displayedCategory} subs={displayedSubs} />
           </div>
         )}
       </section>
@@ -525,35 +521,7 @@ function FilterPill({
   );
 }
 
-function CategoryCard({
-  category,
-  subs,
-  images = [],
-}: {
-  category: Category;
-  subs: Subclass[];
-  images?: ImageNode[];
-}) {
-  const counts = useMemo(() => {
-    const map = new Map<string, number>();
-    subs.forEach((s) => map.set(s.id, 0));
-    for (const img of images) {
-      let bestSub = "";
-      let maxScore = -1;
-      for (const s of subs) {
-        const score = img.scores[s.id] ?? 0;
-        if (score > maxScore) {
-          maxScore = score;
-          bestSub = s.id;
-        }
-      }
-      if (bestSub && maxScore > 0) {
-        map.set(bestSub, (map.get(bestSub) ?? 0) + 1);
-      }
-    }
-    return map;
-  }, [images, subs]);
-
+function CategoryCard({ category, subs }: { category: Category; subs: Subclass[] }) {
   return (
     <div className={`pointer-events-auto ${CARD} p-5`}>
       <h2 className="font-serif text-[26px] font-bold leading-tight">
@@ -569,9 +537,6 @@ function CategoryCard({
             <div className="flex items-center gap-2">
               <span className="w-4 shrink-0 font-label text-[10px] tabular-nums text-muted">{String(i + 1).padStart(2, "0")}</span>
               <span className="font-medium uppercase tracking-[0.08em] text-fg">{s.name}</span>
-              <span className="ml-auto rounded-full border border-border/70 bg-canvas px-2 py-0.5 font-label text-[10px] tabular-nums text-muted">
-                {counts.get(s.id) ?? 0} refs
-              </span>
             </div>
             <p className="mt-0.5 pl-6 text-muted">{s.definition}</p>
           </li>
