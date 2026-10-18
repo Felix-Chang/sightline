@@ -255,9 +255,13 @@ export default function Explorer() {
 
       {/* Carded like the slider so the background texture never runs through the text. */}
       <p
-        className={`absolute bottom-4 right-4 hidden w-[min(340px,calc(100vw-2rem))] ${CARD} px-4 py-2.5 text-center font-label text-[11px] text-muted md:block`}
+        className={`absolute bottom-4 right-4 hidden w-[min(340px,calc(100vw-2rem))] justify-between gap-3 ${CARD} px-4 py-2.5 font-label text-[11px] text-muted md:flex`}
       >
-        scroll to zoom · drag to pan · ← → to change filters
+        <span>Scroll to zoom</span>
+        <span aria-hidden>|</span>
+        <span>Drag to pan</span>
+        <span aria-hidden>|</span>
+        <span>← → Change filters</span>
       </p>
 
       {detail && (
