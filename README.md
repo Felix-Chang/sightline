@@ -1,4 +1,10 @@
-# SightLine
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/sightline-mark-white.svg">
+    <img src="docs/sightline-mark.svg" alt="" height="30">
+  </picture>
+  SightLine
+</h1>
 
 **A self-organizing graph of visual references, sorted by *how* images look rather than *what* they show.**
 
