@@ -150,17 +150,53 @@ export class GraphEngine {
       canvas.style.cursor = "grabbing";
     };
     const onMove = (e: PointerEvent) => {
-      if (!drag) return;
-      const dx = e.clientX - drag.x;
-      const dy = e.clientY - drag.y;
-      if (Math.abs(dx) + Math.abs(dy) > 3) this.dragMoved = true;
-      const position = this.constrainPanToVisibleNode(drag.wx + dx, drag.wy + dy);
-      this.world.position.set(position.x, position.y);
-      this.emitView();
+      if (drag) {
+        const dx = e.clientX - drag.x;
+        const dy = e.clientY - drag.y;
+        if (Math.abs(dx) + Math.abs(dy) > 3) this.dragMoved = true;
+        const position = this.constrainPanToVisibleNode(drag.wx + dx, drag.wy + dy);
+        this.world.position.set(position.x, position.y);
+        this.emitView();
+        return;
+      }
+
+      // Fast cursor sweep protection: verify pointer is still within the hovered node's boundary
+      if (this.hovered) {
+        const rect = canvas.getBoundingClientRect();
+        if (
+          e.clientX < rect.left ||
+          e.clientX > rect.right ||
+          e.clientY < rect.top ||
+          e.clientY > rect.bottom
+        ) {
+          this.setHover(null);
+          return;
+        }
+
+        const node = this.nodes.get(this.hovered);
+        if (node && node.x != null && node.y != null) {
+          const s = this.world.scale.x;
+          const screenX = rect.left + this.world.x + node.x * s;
+          const screenY = rect.top + this.world.y + node.y * s;
+          const bounds = this.thumbnailScreenBounds(node, s);
+          // 1.5x margin gives a slight buffer for micro-jitters, but fast exits clear immediately
+          if (
+            Math.abs(e.clientX - screenX) > bounds.x * 1.5 ||
+            Math.abs(e.clientY - screenY) > bounds.y * 1.5
+          ) {
+            this.setHover(null);
+          }
+        }
+      }
     };
     const onUp = () => {
       drag = null;
       canvas.style.cursor = "grab";
+    };
+    const onCanvasLeave = () => {
+      if (!drag) {
+        this.setHover(null);
+      }
     };
     const onDblClick = () => {
       this.fit(true);
@@ -177,8 +213,19 @@ export class GraphEngine {
     this.app.stage.on("pointertap", (e) => {
       if (e.target === this.app.stage && !this.dragMoved) this.onSelect(null);
     });
+    this.app.stage.on("pointermove", (e) => {
+      if (e.target === this.app.stage && this.hovered) {
+        this.setHover(null);
+      }
+    });
+    this.app.stage.on("pointerover", (e) => {
+      if (e.target === this.app.stage && this.hovered) {
+        this.setHover(null);
+      }
+    });
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointerleave", onCanvasLeave);
     canvas.addEventListener("dblclick", onDblClick);
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -191,6 +238,7 @@ export class GraphEngine {
     this.cleanup.push(() => {
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("pointerdown", onDown);
+      canvas.removeEventListener("pointerleave", onCanvasLeave);
       canvas.removeEventListener("dblclick", onDblClick);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
