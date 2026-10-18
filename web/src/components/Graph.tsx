@@ -19,9 +19,11 @@ type Props = {
   selectedId: string | null;
   onHover: (id: string | null) => void;
   onSelect: (id: string | null) => void;
+  /** Called once the canvas is up and the first nodes (as skeleton tiles) are on screen. */
+  onReady?: () => void;
 };
 
-export default function Graph({ images, layout, selectedId, onHover, onSelect }: Props) {
+export default function Graph({ images, layout, selectedId, onHover, onSelect, onReady }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const pulseCanvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GraphEngine | null>(null);
@@ -31,9 +33,11 @@ export default function Graph({ images, layout, selectedId, onHover, onSelect }:
   const anchorKeyRef = useRef<string | null>(null);
   // Latest callbacks for the engine, which is created once; refreshed after each render.
   const handlers = useRef({ onHover, onSelect });
+  const onReadyRef = useRef(onReady);
   useEffect(() => {
     handlers.current = { onHover, onSelect };
-  }, [onHover, onSelect]);
+    onReadyRef.current = onReady;
+  }, [onHover, onSelect, onReady]);
 
   useEffect(() => {
     const engine = new GraphEngine(
@@ -70,7 +74,12 @@ export default function Graph({ images, layout, selectedId, onHover, onSelect }:
   }, []);
 
   useEffect(() => {
-    readyRef.current?.then(() => engineRef.current?.setImages(images));
+    readyRef.current?.then(() => {
+      const engine = engineRef.current;
+      if (!engine) return;
+      void engine.setImages(images); // adds every node at once; photos stream in afterwards
+      if (images.length) onReadyRef.current?.();
+    });
   }, [images]);
 
   useEffect(() => {
