@@ -25,23 +25,22 @@ export default function Explorer() {
   const [data, setData] = useState<Dataset | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string>(ALL);
-  const [focus, setFocus] = useState(DEFAULT_FOCUS);
+  // Read the cached slider position during the first render rather than from an effect, which
+  // would set state immediately and cascade a second render. Safe to read here because the panel
+  // is not server-rendered: the first paint is the loading screen, before any data arrives.
+  const [focus, setFocus] = useState(() => {
+    if (typeof window === "undefined") return DEFAULT_FOCUS;
+    try {
+      const cached = window.localStorage.getItem(FOCUS_STORAGE_KEY);
+      const val = cached === null ? NaN : Number(cached);
+      return Number.isNaN(val) || val < 1 || val > 8 ? DEFAULT_FOCUS : val;
+    } catch {
+      return DEFAULT_FOCUS;
+    }
+  });
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const filterRefs = useRef(new Map<string, HTMLButtonElement>());
-
-  // Restore cached slider position if the user previously changed it
-  useEffect(() => {
-    try {
-      const cached = localStorage.getItem(FOCUS_STORAGE_KEY);
-      if (cached !== null) {
-        const val = Number(cached);
-        if (!Number.isNaN(val) && val >= 1 && val <= 8) {
-          setFocus(val);
-        }
-      }
-    } catch {}
-  }, []);
 
   const onFocusChange = useCallback((newFocus: number) => {
     setFocus(newFocus);
