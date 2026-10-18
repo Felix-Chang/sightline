@@ -106,7 +106,8 @@ export class GraphEngine {
       const dx = e.clientX - drag.x;
       const dy = e.clientY - drag.y;
       if (Math.abs(dx) + Math.abs(dy) > 3) this.dragMoved = true;
-      this.world.position.set(drag.wx + dx, drag.wy + dy);
+      const position = this.constrainPanToVisibleNode(drag.wx + dx, drag.wy + dy);
+      this.world.position.set(position.x, position.y);
       this.emitView();
     };
     const onUp = () => {
@@ -133,6 +134,51 @@ export class GraphEngine {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     });
+  }
+
+  /**
+   * Keep panning from losing the entire graph. The camera remains free until
+   * its proposed position would hide every complete thumbnail, at which point
+   * it is clamped just enough to retain the closest viable one.
+   */
+  private constrainPanToVisibleNode(x: number, y: number) {
+    const { width, height } = this.app.screen;
+    const zoom = this.world.scale.x;
+    const fullyVisible = (node: Node, px: number, py: number) => {
+      const bounds = this.thumbnailScreenBounds(node, zoom);
+      const centerX = px + (node.x ?? 0) * zoom;
+      const centerY = py + (node.y ?? 0) * zoom;
+      return centerX - bounds.x >= 0 && centerX + bounds.x <= width && centerY - bounds.y >= 0 && centerY + bounds.y <= height;
+    };
+    const nodes = [...this.nodes.values()].filter((node) => {
+      const bounds = this.thumbnailScreenBounds(node, zoom);
+      return node.x != null && node.y != null && bounds.x * 2 <= width && bounds.y * 2 <= height;
+    });
+    if (!nodes.length || nodes.some((node) => fullyVisible(node, x, y))) return { x, y };
+
+    let best: { x: number; y: number; distance: number } | null = null;
+    for (const node of nodes) {
+      const bounds = this.thumbnailScreenBounds(node, zoom);
+      const minX = bounds.x - (node.x ?? 0) * zoom;
+      const maxX = width - bounds.x - (node.x ?? 0) * zoom;
+      const minY = bounds.y - (node.y ?? 0) * zoom;
+      const maxY = height - bounds.y - (node.y ?? 0) * zoom;
+      const clampedX = Math.min(maxX, Math.max(minX, x));
+      const clampedY = Math.min(maxY, Math.max(minY, y));
+      const distance = (clampedX - x) ** 2 + (clampedY - y) ** 2;
+      if (!best || distance < best.distance) best = { x: clampedX, y: clampedY, distance };
+    }
+    return best ? { x: best.x, y: best.y } : { x, y };
+  }
+
+  private thumbnailScreenBounds(node: Node, zoom: number) {
+    const container = this.sprites.get(node.id);
+    const sprite = container?.children[1] as Sprite | undefined;
+    const pad = node.id === this.selected ? 3 : node.id === this.hovered ? 2 : 0.5;
+    return {
+      x: ((sprite?.width ?? THUMB) / 2 + pad) * node.scale * zoom,
+      y: ((sprite?.height ?? THUMB) / 2 + pad) * node.scale * zoom,
+    };
   }
 
   /** Add any images not yet on the canvas (initial load or new uploads). */
