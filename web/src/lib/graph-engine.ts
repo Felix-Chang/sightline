@@ -148,7 +148,7 @@ export class GraphEngine {
       const s = Math.min(4, Math.max(minScale, this.world.scale.x * Math.exp(-e.deltaY * 0.0015)));
       this.world.scale.set(s);
       this.world.position.set(px - before.x * s, py - before.y * s);
-      this.beginAutoPanToVisibleNode();
+      this.beginAutoPanToCluster();
       this.emitView();
     };
     let drag: { x: number; y: number; wx: number; wy: number } | null = null;
@@ -164,7 +164,7 @@ export class GraphEngine {
         const dx = e.clientX - drag.x;
         const dy = e.clientY - drag.y;
         if (Math.abs(dx) + Math.abs(dy) > 3) this.dragMoved = true;
-        const position = this.constrainPanToVisibleNode(drag.wx + dx, drag.wy + dy);
+        const position = this.applyRubberBandPan(drag.wx + dx, drag.wy + dy);
         this.world.position.set(position.x, position.y);
         this.emitView();
         return;
@@ -202,6 +202,7 @@ export class GraphEngine {
     const onUp = () => {
       drag = null;
       canvas.style.cursor = "grab";
+      this.beginAutoPanToCluster();
     };
     const onCanvasLeave = () => {
       if (!drag) {
@@ -257,47 +258,128 @@ export class GraphEngine {
   }
 
   /**
-   * Keep panning from losing the entire graph. The camera remains free until
-   * its proposed position would hide every complete thumbnail, at which point
-   * it is clamped just enough to retain the closest viable one.
+   * Calculate camera limits so that at least a couple of images remain visible
+   * along the viewport edges when panning. Scales dynamically with zoom level.
    */
-  private constrainPanToVisibleNode(x: number, y: number) {
+  private getClusterPanLimits() {
     const { width, height } = this.app.screen;
     const zoom = this.world.scale.x;
-    const fullyVisible = (node: Node, px: number, py: number) => {
-      const bounds = this.thumbnailScreenBounds(node, zoom);
-      const centerX = px + (node.x ?? 0) * zoom;
-      const centerY = py + (node.y ?? 0) * zoom;
-      return centerX - bounds.x >= 0 && centerX + bounds.x <= width && centerY - bounds.y >= 0 && centerY + bounds.y <= height;
-    };
-    const nodes = [...this.nodes.values()].filter((node) => {
-      const bounds = this.thumbnailScreenBounds(node, zoom);
-      return node.x != null && node.y != null && bounds.x * 2 <= width && bounds.y * 2 <= height;
-    });
-    if (!nodes.length || nodes.some((node) => fullyVisible(node, x, y))) return { x, y };
+    const inset = width >= 760 ? 380 : 0;
+    const usable = width - inset;
 
-    let best: { x: number; y: number; distance: number } | null = null;
-    for (const node of nodes) {
-      const bounds = this.thumbnailScreenBounds(node, zoom);
-      const minX = bounds.x - (node.x ?? 0) * zoom;
-      const maxX = width - bounds.x - (node.x ?? 0) * zoom;
-      const minY = bounds.y - (node.y ?? 0) * zoom;
-      const maxY = height - bounds.y - (node.y ?? 0) * zoom;
-      const clampedX = Math.min(maxX, Math.max(minX, x));
-      const clampedY = Math.min(maxY, Math.max(minY, y));
-      const distance = (clampedX - x) ** 2 + (clampedY - y) ** 2;
-      if (!best || distance < best.distance) best = { x: clampedX, y: clampedY, distance };
+    const fitScale = Math.min(usable, height) / (RING_RADIUS * 2 + 340);
+    const zoomRatio = Math.max(0.6, zoom / (fitScale || 1));
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    let hasNodes = false;
+
+    for (const node of this.nodes.values()) {
+      if (node.x == null || node.y == null) continue;
+      if (node.x < minX) minX = node.x;
+      if (node.x > maxX) maxX = node.x;
+      if (node.y < minY) minY = node.y;
+      if (node.y > maxY) maxY = node.y;
+      hasNodes = true;
     }
-    return best ? { x: best.x, y: best.y } : { x, y };
+
+    if (!hasNodes) {
+      minX = -RING_RADIUS;
+      maxX = RING_RADIUS;
+      minY = -RING_RADIUS;
+      maxY = RING_RADIUS;
+    }
+
+    // When zoomed in, the physical size of thumbnails is larger (THUMB * zoom).
+    // Dynamically scale edgeMargin so a rich view of images is ALWAYS visible
+    // and the camera stays attracted to the image network:
+    const thumbScreenSize = THUMB * zoom;
+    const baseMarginX = Math.max(260, thumbScreenSize * 2.2);
+    const baseMarginY = Math.max(220, thumbScreenSize * 1.9);
+
+    const edgeMarginX = Math.min(usable * 0.45, baseMarginX);
+    const edgeMarginY = Math.min(height * 0.45, baseMarginY);
+
+    const minWorldX = inset + edgeMarginX - maxX * zoom;
+    const maxWorldX = width - edgeMarginX - minX * zoom;
+    const minWorldY = edgeMarginY - maxY * zoom;
+    const maxWorldY = height - edgeMarginY - minY * zoom;
+
+    return {
+      minWorldX: Math.min(minWorldX, maxWorldX),
+      maxWorldX: Math.max(minWorldX, maxWorldX),
+      minWorldY: Math.min(minWorldY, maxWorldY),
+      maxWorldY: Math.max(minWorldY, maxWorldY),
+      zoomRatio,
+    };
   }
 
-  /** Begin a camera-only correction after zoom leaves the graph out of view. */
-  private beginAutoPanToVisibleNode() {
-    const target = this.constrainPanToVisibleNode(this.world.x, this.world.y);
-    this.autoPanTarget = target.x === this.world.x && target.y === this.world.y ? null : target;
+  /**
+   * Smooth rubber-band damping when pulling far into empty space.
+   * Damping increases with zoom level so the image system feels strongly tethered.
+   */
+  private applyRubberBandPan(rawX: number, rawY: number) {
+    const limits = this.getClusterPanLimits();
+    let x = rawX;
+    let y = rawY;
+
+    // As zoom level rises, increase the magnetic drag resistance so the user
+    // physically feels the tension keeping them anchored to the images:
+    const damping = Math.max(0.24, 0.55 - Math.max(0, limits.zoomRatio - 1) * 0.12);
+
+    if (x < limits.minWorldX) {
+      const overflow = limits.minWorldX - x;
+      x = limits.minWorldX - overflow * damping;
+    } else if (x > limits.maxWorldX) {
+      const overflow = x - limits.maxWorldX;
+      x = limits.maxWorldX + overflow * damping;
+    }
+
+    if (y < limits.minWorldY) {
+      const overflow = limits.minWorldY - y;
+      y = limits.minWorldY - overflow * damping;
+    } else if (y > limits.maxWorldY) {
+      const overflow = y - limits.maxWorldY;
+      y = limits.maxWorldY + overflow * damping;
+    }
+
+    return { x, y };
   }
 
-  /** Ease toward the nearest valid camera position without changing zoom. */
+  /**
+   * When dragging ends or zoom completes, if the camera was pulled away into empty space,
+   * initiate a soft magnetic pull back so at least a couple of images remain visible.
+   */
+  private beginAutoPanToCluster() {
+    const limits = this.getClusterPanLimits();
+    const currentX = this.world.x;
+    const currentY = this.world.y;
+
+    let targetX = currentX;
+    let targetY = currentY;
+
+    if (currentX < limits.minWorldX) {
+      targetX = limits.minWorldX;
+    } else if (currentX > limits.maxWorldX) {
+      targetX = limits.maxWorldX;
+    }
+
+    if (currentY < limits.minWorldY) {
+      targetY = limits.minWorldY;
+    } else if (currentY > limits.maxWorldY) {
+      targetY = limits.maxWorldY;
+    }
+
+    if (Math.abs(targetX - currentX) > 1 || Math.abs(targetY - currentY) > 1) {
+      this.autoPanTarget = { x: targetX, y: targetY };
+    } else {
+      this.autoPanTarget = null;
+    }
+  }
+
+  /** Slowly and smoothly ease toward the target camera position near the mind map. */
   private advanceAutoPan = () => {
     if (this.cameraTransition) return;
     const target = this.autoPanTarget;
@@ -305,15 +387,26 @@ export class GraphEngine {
     const dx = target.x - this.world.x;
     const dy = target.y - this.world.y;
     const distance = Math.hypot(dx, dy);
-    if (distance < 0.25) {
+    if (distance < 0.5) {
       this.world.position.set(target.x, target.y);
       this.autoPanTarget = null;
       this.emitView();
       return;
     }
-    // Cover a distant empty viewport quickly, then ease sharply as the node
-    // reaches the edge so the correction never reads as a late teleport.
-    const step = Math.min(80, Math.max(0.5, distance * 0.16));
+
+    const { width, height } = this.app.screen;
+    const inset = width >= 760 ? 380 : 0;
+    const usable = width - inset;
+    const fitScale = Math.min(usable, height) / (RING_RADIUS * 2 + 340);
+    const zoomRatio = Math.max(0.6, this.world.scale.x / (fitScale || 1));
+
+    // When really zoomed in, the magnetic pull becomes noticeably stronger and snappier
+    // to keep the viewer locked onto the image system:
+    const zoomBoost = Math.min(2.2, 1 + Math.max(0, zoomRatio - 1) * 0.55);
+    const speed = Math.min(0.16, 0.085 * zoomBoost);
+    const maxStep = Math.min(58, 36 * zoomBoost);
+
+    const step = Math.min(maxStep, Math.max(0.4, distance * speed));
     this.world.position.set(this.world.x + (dx / distance) * step, this.world.y + (dy / distance) * step);
     this.emitView();
   };
