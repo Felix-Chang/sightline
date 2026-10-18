@@ -334,13 +334,13 @@ export default function Explorer() {
         <span className="text-border" aria-hidden>·</span>
         <span className="flex items-center gap-1">
           <kbd className="rounded border border-border bg-canvas px-1.5 py-0.5 font-mono text-[9px] font-semibold text-fg shadow-xs">F</kbd>
-          <span>fit view</span>
+          <span>Fit view</span>
         </span>
         <span className="text-border" aria-hidden>·</span>
         <span className="flex items-center gap-1">
           <kbd className="rounded border border-border bg-canvas px-1.5 py-0.5 font-mono text-[9px] font-semibold text-fg shadow-xs">←</kbd>
           <kbd className="rounded border border-border bg-canvas px-1.5 py-0.5 font-mono text-[9px] font-semibold text-fg shadow-xs">→</kbd>
-          <span>filters</span>
+          <span>Filters</span>
         </span>
       </div>
 
