@@ -80,6 +80,29 @@ export default function Explorer() {
     [category, subsByCat],
   );
 
+  // Active category display tracking for entrance (slide-down) and exit (slide-up) animations
+  const [displayedCategory, setDisplayedCategory] = useState<Category | null>(null);
+  const [displayedSubs, setDisplayedSubs] = useState<Subclass[]>([]);
+  const [isClosingCategory, setIsClosingCategory] = useState(false);
+
+  useEffect(() => {
+    if (category) {
+      setDisplayedCategory(category);
+      setDisplayedSubs(subs);
+      setIsClosingCategory(false);
+    } else if (displayedCategory) {
+      setIsClosingCategory(true);
+    }
+  }, [category, subs, displayedCategory]);
+
+  const onCategoryAnimationEnd = useCallback(() => {
+    if (isClosingCategory) {
+      setDisplayedCategory(null);
+      setDisplayedSubs([]);
+      setIsClosingCategory(false);
+    }
+  }, [isClosingCategory]);
+
   const layout: GraphLayout = useMemo(() => {
     const images = data?.images ?? [];
     if (!category) {
@@ -129,6 +152,26 @@ export default function Explorer() {
 
   const detailId = selectedId ?? hoveredId;
   const detail = data?.images.find((i) => i.id === detailId) ?? null;
+
+  // Active detail tracking for entrance (slide-in) and exit (slide-out) animations
+  const [displayedDetail, setDisplayedDetail] = useState<ImageNode | null>(null);
+  const [isClosingDetail, setIsClosingDetail] = useState(false);
+
+  useEffect(() => {
+    if (detail) {
+      setDisplayedDetail(detail);
+      setIsClosingDetail(false);
+    } else if (displayedDetail) {
+      setIsClosingDetail(true);
+    }
+  }, [detail, displayedDetail]);
+
+  const onDetailAnimationEnd = useCallback(() => {
+    if (isClosingDetail) {
+      setDisplayedDetail(null);
+      setIsClosingDetail(false);
+    }
+  }, [isClosingDetail]);
 
   if (error) {
     return (
@@ -230,37 +273,49 @@ export default function Explorer() {
           </div>
         </div>
 
-        {category && (
-          <div key={category.id} className="relative z-0 animate-slide-down">
-            <CategoryCard category={category} subs={subs} images={data.images} />
+        {displayedCategory && (
+          <div
+            key={isClosingCategory ? "closing" : displayedCategory.id}
+            onAnimationEnd={onCategoryAnimationEnd}
+            className={`relative z-0 ${
+              isClosingCategory ? "animate-slide-up" : "animate-slide-down"
+            }`}
+          >
+            <CategoryCard
+              category={displayedCategory}
+              subs={displayedSubs}
+              images={data.images}
+            />
           </div>
         )}
       </section>
 
       {/* Focus slider */}
-      {category && (
-        <div
-          className={`absolute bottom-4 left-4 flex w-[min(360px,calc(100vw-2rem))] items-center gap-3 ${CARD} px-4 py-2.5 font-label text-[11px] text-muted`}
-        >
-          <label htmlFor="focus">Separate</label>
-          <input
-            id="focus"
-            type="range"
-            min={1}
-            max={8}
-            step={0.5}
-            value={9 - focus}
-            onChange={(e) => onFocusChange(9 - Number(e.target.value))}
-            className="min-w-0 flex-1 cursor-pointer accent-accent"
-          />
-          <span>Blend</span>
-        </div>
-      )}
+      <div
+        className={`absolute bottom-4 left-4 flex w-[min(360px,calc(100vw-2rem))] items-center gap-3 ${CARD} px-4 py-2.5 font-label text-[11px] text-muted transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          category
+            ? "translate-y-0 opacity-100 pointer-events-auto"
+            : "translate-y-14 opacity-0 pointer-events-none"
+        }`}
+      >
+        <label htmlFor="focus">Separate</label>
+        <input
+          id="focus"
+          type="range"
+          min={1}
+          max={8}
+          step={0.5}
+          value={9 - focus}
+          onChange={(e) => onFocusChange(9 - Number(e.target.value))}
+          className="min-w-0 flex-1 cursor-pointer accent-accent"
+        />
+        <span>Blend</span>
+      </div>
 
       {/* Carded pill for interactions & shortcuts */}
       <div
         className={`absolute bottom-4 right-4 hidden items-center gap-2.5 ${CARD} px-3.5 py-2 font-label text-[11px] text-muted transition-all duration-200 ease-out md:flex ${
-          detail
+          displayedDetail
             ? "pointer-events-none translate-y-2 opacity-0"
             : "translate-y-0 opacity-100"
         }`}
@@ -281,13 +336,15 @@ export default function Explorer() {
         </span>
       </div>
 
-      {detail && (
+      {displayedDetail && (
         <DetailCard
-          image={detail}
-          pinned={detail.id === selectedId}
+          image={displayedDetail}
+          pinned={displayedDetail.id === selectedId}
           categories={category ? [category] : categories}
           filtered={!!category}
           subsByCat={subsByCat}
+          isClosing={isClosingDetail}
+          onAnimationEnd={onDetailAnimationEnd}
           onClose={() => setSelectedId(null)}
         />
       )}
@@ -297,7 +354,7 @@ export default function Explorer() {
 
 // Shared card look: white sheet, hairline border, soft paper shadow (like the reel's light frames).
 const CARD =
-  "rounded-2xl border border-border bg-surface/95 shadow-[0_1px_2px_rgba(28,28,26,0.06),0_8px_24px_rgba(28,28,26,0.06)] backdrop-blur";
+  "rounded-2xl border border-border bg-surface shadow-[0_1px_2px_rgba(28,28,26,0.06),0_8px_24px_rgba(28,28,26,0.06)]";
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
@@ -392,7 +449,7 @@ function CategoryCard({
             <div className="flex items-center gap-2">
               <span className="w-4 shrink-0 font-label text-[10px] tabular-nums text-muted">{String(i + 1).padStart(2, "0")}</span>
               <span className="font-medium uppercase tracking-[0.08em] text-fg">{s.name}</span>
-              <span className="ml-auto rounded-full border border-border/70 bg-canvas/60 px-2 py-0.5 font-label text-[10px] tabular-nums text-muted">
+              <span className="ml-auto rounded-full border border-border/70 bg-canvas px-2 py-0.5 font-label text-[10px] tabular-nums text-muted">
                 {counts.get(s.id) ?? 0} refs
               </span>
             </div>
@@ -404,17 +461,33 @@ function CategoryCard({
   );
 }
 
-function DetailCard({ image, pinned, categories, filtered, subsByCat, onClose }: {
+function DetailCard({
+  image,
+  pinned,
+  categories,
+  filtered,
+  subsByCat,
+  isClosing = false,
+  onAnimationEnd,
+  onClose,
+}: {
   image: ImageNode;
   pinned: boolean;
   categories: Category[];
   filtered: boolean;
   subsByCat: Map<string, Subclass[]>;
+  isClosing?: boolean;
+  onAnimationEnd?: () => void;
   onClose: () => void;
 }) {
   return (
     <aside
-      className={`pointer-events-auto absolute right-4 top-4 z-20 flex max-h-[calc(100dvh-2rem)] w-[min(340px,calc(100vw-2rem))] flex-col overflow-hidden animate-slide-in-right ${CARD}`}
+      onAnimationEnd={(e) => {
+        if (e.target === e.currentTarget) onAnimationEnd?.();
+      }}
+      className={`pointer-events-auto absolute right-4 top-4 z-20 flex max-h-[calc(100dvh-2rem)] w-[min(340px,calc(100vw-2rem))] flex-col overflow-hidden ${CARD} ${
+        isClosing ? "animate-slide-out-right" : "animate-slide-in-right"
+      }`}
     >
       <div className="border-b border-border bg-canvas p-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
