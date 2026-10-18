@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   loadDataset,
   type Category,
@@ -26,6 +26,7 @@ export default function Explorer() {
   const [focus, setFocus] = useState(DEFAULT_FOCUS);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const filterRefs = useRef(new Map<string, HTMLButtonElement>());
 
   // Restore cached slider position if the user previously changed it
   useEffect(() => {
@@ -48,6 +49,9 @@ export default function Explorer() {
   }, []);
 
   const selectCategory = useCallback((id: string) => {
+    // Filter navigation ends a hover immediately, before the new layout's
+    // effect runs, so its detail card cannot linger during the transition.
+    setHoveredId(null);
     setCategoryId(id);
   }, []);
 
@@ -120,7 +124,12 @@ export default function Explorer() {
         const i = ids.indexOf(categoryId);
         const next =
           (i + (e.key === "ArrowRight" ? 1 : ids.length - 1)) % ids.length;
-        selectCategory(ids[next]);
+        e.preventDefault();
+        const nextId = ids[next];
+        selectCategory(nextId);
+        // Keep native focus aligned with the filter state. This makes Enter
+        // target the visible filter instead of a previously clicked pill.
+        filterRefs.current.get(nextId)?.focus();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -215,6 +224,10 @@ export default function Explorer() {
             <FilterPill
               active={categoryId === ALL}
               onClick={() => selectCategory(ALL)}
+              buttonRef={(node) => {
+                if (node) filterRefs.current.set(ALL, node);
+                else filterRefs.current.delete(ALL);
+              }}
             >
               None
             </FilterPill>
@@ -223,6 +236,10 @@ export default function Explorer() {
                 key={c.id}
                 active={c.id === categoryId}
                 onClick={() => selectCategory(c.id)}
+                buttonRef={(node) => {
+                  if (node) filterRefs.current.set(c.id, node);
+                  else filterRefs.current.delete(c.id);
+                }}
               >
                 {c.name}
               </FilterPill>
@@ -311,16 +328,20 @@ function Eyebrow({
 function FilterPill({
   active,
   onClick,
+  buttonRef,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  buttonRef: (node: HTMLButtonElement | null) => void;
   children: React.ReactNode;
 }) {
   return (
     <button
+      ref={buttonRef}
       onClick={onClick}
       aria-pressed={active}
+      tabIndex={active ? 0 : -1}
       className={`rounded-full border px-3 py-1 text-xs transition-colors ${
         active
           ? "border-fg bg-fg text-surface"

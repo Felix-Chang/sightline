@@ -268,6 +268,10 @@ export class GraphEngine {
   applyLayout(layout: GraphLayout, alpha = 0.8) {
     this.layout = layout;
     if (!this.ready) return;
+    // A filter represents a new layout context, not a continuation of the
+    // pointer interaction. Release the hovered node before it can be pinned
+    // into the transition.
+    this.clearHover();
     // A selected image remains selected, but must travel when the filter changes.
     this.layoutTransition = true;
     for (const node of this.nodes.values()) {
@@ -442,6 +446,10 @@ export class GraphEngine {
   }
 
   private setHover(id: string | null) {
+    if (id == null) {
+      this.clearHover();
+      return;
+    }
     const prev = this.hovered;
     this.hovered = id;
     if (prev) {
@@ -454,6 +462,16 @@ export class GraphEngine {
     }
     this.updateInteraction();
     this.onHover(id);
+  }
+
+  private clearHover() {
+    const prev = this.hovered;
+    if (!prev) return;
+    this.hovered = null;
+    this.demote(prev);
+    this.drawFrame(prev);
+    this.updateInteraction();
+    this.onHover(null);
   }
 
   setSelected(id: string | null) {
