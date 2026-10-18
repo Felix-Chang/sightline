@@ -126,7 +126,7 @@ export default function Explorer() {
       return {
         anchors: [],
         targets: umapTargets(images),
-        links: knnLinks(images, enabledSubs, 2),
+        links: knnLinks(images, enabledSubs, 3),
         ring: false,
         showLinks: true,
       };

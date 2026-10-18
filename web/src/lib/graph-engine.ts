@@ -24,6 +24,22 @@ type Node = SimulationNodeDatum & {
 };
 type Link = { source: string | Node; target: string | Node };
 
+type InfectedLink = {
+  rawLink: Link;
+  source: Node;
+  target: Node;
+  dist: number;
+};
+
+type InfectionState = {
+  sourceId: string;
+  startTime: number;
+  duration: number;
+  links: InfectedLink[];
+  neighborIds: string[];
+  framesInfected: boolean;
+};
+
 export type GraphLayout = { anchors: Anchor[]; targets: Map<string, Target>; links: [string, string][]; ring: boolean; showLinks: boolean };
 
 /** Imperative PixiJS + d3-force scene. React owns the UI around it; this owns the canvas. */
@@ -46,6 +62,8 @@ export class GraphEngine {
   private sim: Simulation<Node, Link> | null = null;
   private collide: ForceCollide<Node> | null = null;
   private layout: GraphLayout = { anchors: [], targets: new Map(), links: [], ring: false, showLinks: false };
+  private currentLinks: Link[] = [];
+  private infection: InfectionState | null = null;
   private selected: string | null = null;
   private hovered: string | null = null;
   private autoPanTarget: { x: number; y: number } | null = null;
@@ -94,9 +112,11 @@ export class GraphEngine {
     this.enablePanZoom();
     this.app.ticker.add(this.advanceAutoPan);
     this.app.ticker.add(this.advanceCameraTransition);
+    this.app.ticker.add(this.advanceInfection);
     this.cleanup.push(() => {
       this.app.ticker.remove(this.advanceAutoPan);
       this.app.ticker.remove(this.advanceCameraTransition);
+      this.app.ticker.remove(this.advanceInfection);
     });
     this.ready = true;
   }
@@ -576,6 +596,7 @@ export class GraphEngine {
     const links: Link[] = layout.links
       .filter(([a, b]) => this.nodes.has(a) && this.nodes.has(b))
       .map(([source, target]) => ({ source: this.nodes.get(source)!, target: this.nodes.get(target)! }));
+    this.currentLinks = links;
     this.sim?.stop();
     const collide = forceCollide<Node>()
       .radius((d) => COLLISION_RADIUS * d.scale)
@@ -589,11 +610,16 @@ export class GraphEngine {
       .alpha(alpha)
       .alphaDecay(0.02)
       .velocityDecay(0.5)
-      .on("tick", () => this.tick(links));
+      .on("tick", () => this.tick());
+    if (this.layout.showLinks && this.selected) {
+      this.startInfection(this.selected);
+    } else {
+      this.clearInfection();
+    }
     this.updateInteraction();
   }
 
-  private tick(links: Link[]) {
+  private tick() {
     let resized = false;
     for (const node of this.nodes.values()) {
       const delta = node.targetScale - node.scale;
@@ -628,31 +654,7 @@ export class GraphEngine {
       this.layoutTransition = false;
       this.lockActiveNodes();
     }
-    const g = this.edgeLayer;
-    g.clear();
-    // Neighbor web: faint curves between images with similar scores. Unfiltered view only -
-    // with a category picked the anchor threads carry the story and these just add noise.
-    if (this.layout.showLinks) {
-      for (const l of links) {
-        const a = l.source as Node;
-        const b = l.target as Node;
-        if (a.x == null || b.x == null) continue;
-        const mx = (a.x + b.x) / 2;
-        const my = (a.y! + b.y!) / 2;
-        g.moveTo(a.x, a.y!).quadraticCurveTo(mx * 0.9, my * 0.9, b.x, b.y!);
-      }
-      g.stroke({ width: 1, color: theme.muted, alpha: 0.28 });
-    }
-    // Anchor threads: accent curves from each anchor to images that strongly have that quality.
-    const { anchors } = this.layout;
-    anchors.forEach((anchor, i) => {
-      for (const node of this.nodes.values()) {
-        const w = node.weights[i] ?? 0;
-        if (w < 0.4 || node.x == null) continue;
-        g.moveTo(anchor.x, anchor.y).quadraticCurveTo((anchor.x + node.x) * 0.35, (anchor.y + node.y!) * 0.35, node.x, node.y!);
-        g.stroke({ width: 1.2, color: anchorColor(i), alpha: Math.min(0.7, 0.15 + (w - 0.4) * 1.4) });
-      }
-    });
+    this.drawEdges();
     this.emitView();
   }
 
@@ -781,7 +783,180 @@ export class GraphEngine {
       this.promote(id);
       this.drawFrame(id);
     }
+    if (this.layout.showLinks) {
+      this.startInfection(id);
+    } else {
+      this.clearInfection();
+    }
     this.updateInteraction();
+  }
+
+  private clearInfection() {
+    if (!this.infection) return;
+    const oldNeighbors = this.infection.neighborIds;
+    this.infection = null;
+    for (const nid of oldNeighbors) {
+      this.drawFrame(nid);
+    }
+    this.drawEdges();
+  }
+
+  private startInfection(id: string | null) {
+    if (!id || !this.layout.showLinks) {
+      this.clearInfection();
+      return;
+    }
+
+    const sourceNode = this.nodes.get(id);
+    if (!sourceNode) return;
+
+    // Restore previous infection's neighbor frames if changing selection
+    if (this.infection) {
+      for (const nid of this.infection.neighborIds) {
+        if (nid !== id) this.drawFrame(nid);
+      }
+    }
+
+    // Find all links touching this node
+    const incident: InfectedLink[] = [];
+    for (const l of this.currentLinks) {
+      const a = l.source as Node;
+      const b = l.target as Node;
+      if (a.id === id && b.id !== id) {
+        const dist = Math.hypot((a.x ?? 0) - (b.x ?? 0), (a.y ?? 0) - (b.y ?? 0));
+        incident.push({ rawLink: l, source: a, target: b, dist });
+      } else if (b.id === id && a.id !== id) {
+        const dist = Math.hypot((a.x ?? 0) - (b.x ?? 0), (a.y ?? 0) - (b.y ?? 0));
+        incident.push({ rawLink: l, source: b, target: a, dist });
+      }
+    }
+
+    // Sort by physical screen distance and take the 3 closest connected lines
+    incident.sort((x, y) => x.dist - y.dist);
+    const chosen = incident.slice(0, 3);
+    const neighborIds = chosen.map((c) => c.target.id);
+
+    this.infection = {
+      sourceId: id,
+      startTime: performance.now(),
+      duration: 520, // 520ms snappy fluid infection wave
+      links: chosen,
+      neighborIds,
+      framesInfected: false,
+    };
+
+    // Immediately render first frame of infection
+    this.drawEdges();
+  }
+
+  private advanceInfection = () => {
+    if (!this.infection || !this.layout.showLinks) return;
+    const elapsed = performance.now() - this.infection.startTime;
+    const rawT = Math.min(1, Math.max(0, elapsed / this.infection.duration));
+
+    // When the infection reaches destination images (at ~75%), infect their frames
+    if (rawT >= 0.75 && !this.infection.framesInfected) {
+      this.infection.framesInfected = true;
+      for (const nid of this.infection.neighborIds) {
+        this.drawFrame(nid);
+      }
+    }
+
+    this.drawEdges();
+  };
+
+  private drawEdges() {
+    const g = this.edgeLayer;
+    g.clear();
+
+    // 1. Neighbor web (when filtering by None)
+    if (this.layout.showLinks) {
+      const infection = this.infection;
+      const infectedRawLinks = new Set<Link>();
+      if (infection) {
+        for (const il of infection.links) {
+          infectedRawLinks.add(il.rawLink);
+        }
+      }
+
+      // Draw normal faint neighbor curves
+      for (const l of this.currentLinks) {
+        if (infectedRawLinks.has(l)) continue;
+        const a = l.source as Node;
+        const b = l.target as Node;
+        if (a.x == null || b.x == null || a.y == null || b.y == null) continue;
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        g.moveTo(a.x, a.y).quadraticCurveTo(mx * 0.9, my * 0.9, b.x, b.y);
+      }
+      g.stroke({ width: 1, color: theme.muted, alpha: infection ? 0.16 : 0.28 });
+
+      // Draw infected curves and propagating wave
+      if (infection && infection.links.length > 0) {
+        const elapsed = performance.now() - infection.startTime;
+        const rawT = Math.min(1, Math.max(0, elapsed / infection.duration));
+        // Ease-out cubic: fast burst out of clicked image, smooth cushion arriving at target images
+        const p = 1 - Math.pow(1 - rawT, 3);
+
+        for (const il of infection.links) {
+          const S = il.source;
+          const N = il.target;
+          if (S.x == null || S.y == null || N.x == null || N.y == null) continue;
+
+          const p0x = S.x;
+          const p0y = S.y;
+          const p2x = N.x;
+          const p2y = N.y;
+          const mx = (p0x + p2x) / 2;
+          const my = (p0y + p2y) / 2;
+          const p1x = mx * 0.9;
+          const p1y = my * 0.9;
+
+          if (p >= 1) {
+            // Full infection line in selection color (theme.accent = #c8312f)
+            g.moveTo(p0x, p0y).quadraticCurveTo(p1x, p1y, p2x, p2y);
+            g.stroke({ width: 2.2, color: theme.accent, alpha: 0.92 });
+          } else {
+            // De Casteljau sub-curve from t=0 to t=p
+            const q0x = p0x;
+            const q0y = p0y;
+            const q1x = (1 - p) * p0x + p * p1x;
+            const q1y = (1 - p) * p0y + p * p1y;
+            const q2x = (1 - p) * (1 - p) * p0x + 2 * (1 - p) * p * p1x + p * p * p2x;
+            const q2y = (1 - p) * (1 - p) * p0y + 2 * (1 - p) * p * p1y + p * p * p2y;
+
+            // Infected trail
+            g.moveTo(q0x, q0y).quadraticCurveTo(q1x, q1y, q2x, q2y);
+            g.stroke({ width: 2.4, color: theme.accent, alpha: 0.96 });
+
+            // Glowing infection spark at the leading tip (q2)
+            g.circle(q2x, q2y, 6).fill({ color: theme.accent, alpha: 0.28 });
+            g.circle(q2x, q2y, 3.2).fill({ color: theme.accent, alpha: 1.0 });
+            g.circle(q2x, q2y, 1.2).fill({ color: 0xffffff, alpha: 0.9 });
+          }
+
+          // Arrival shockwave ring as wave strikes the target image
+          if (rawT >= 0.65) {
+            const arrT = (rawT - 0.65) / 0.35;
+            const easeArr = 1 - Math.pow(1 - arrT, 2);
+            const ringRadius = THUMB * 0.42 + easeArr * 20;
+            const ringAlpha = (1 - arrT) * 0.75;
+            g.circle(p2x, p2y, ringRadius).stroke({ width: 1.8, color: theme.accent, alpha: ringAlpha });
+          }
+        }
+      }
+    }
+
+    // 2. Anchor threads (when category filter is selected)
+    const { anchors } = this.layout;
+    anchors.forEach((anchor, i) => {
+      for (const node of this.nodes.values()) {
+        const w = node.weights[i] ?? 0;
+        if (w < 0.4 || node.x == null || node.y == null) continue;
+        g.moveTo(anchor.x, anchor.y).quadraticCurveTo((anchor.x + node.x) * 0.35, (anchor.y + node.y) * 0.35, node.x, node.y);
+        g.stroke({ width: 1.2, color: anchorColor(i), alpha: Math.min(0.7, 0.15 + (w - 0.4) * 1.4) });
+      }
+    });
   }
 
   /** Enlarged thumbnails stay put while their neighbors make room around them. */
@@ -846,6 +1021,10 @@ export class GraphEngine {
     const c = this.sprites.get(id);
     if (!c) return;
     const active = id === this.hovered || id === this.selected;
+    const isInfectedNeighbor =
+      this.layout.showLinks &&
+      Boolean(this.infection?.framesInfected && this.infection.neighborIds.includes(id));
+
     const shadow = c.children[0] as Graphics;
     const frame = c.children[1] as Graphics;
     const sprite = c.children[2] as Sprite;
@@ -864,6 +1043,14 @@ export class GraphEngine {
       const hoverColor = this.blendColor(theme.surface, theme.fg, Math.min(1, scaleProgress * 3));
       const color = this.blendColor(hoverColor, theme.accent, selectionProgress);
       frame.rect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2).fill({ color });
+    } else if (isInfectedNeighbor) {
+      // Infected destination node: accented frame border with subtle corner node
+      frame.rect(-w / 2 - 2, -h / 2 - 2, w + 4, h + 4).stroke({
+        width: 1.8,
+        color: theme.accent,
+        alpha: 0.9,
+      });
+      frame.circle(w / 2, -h / 2, 2.5).fill({ color: theme.accent });
     } else {
       frame.rect(-w / 2 - 0.5, -h / 2 - 0.5, w + 1, h + 1).stroke({ width: 1, color: theme.surface });
     }
