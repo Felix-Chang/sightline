@@ -38,6 +38,7 @@ export class GraphEngine {
   private layout: GraphLayout = { anchors: [], targets: new Map(), links: [], ring: false, showLinks: false };
   private selected: string | null = null;
   private hovered: string | null = null;
+  private autoPanTarget: { x: number; y: number } | null = null;
   private layoutTransition = false;
   private destroyed = false;
   private dragMoved = false;
@@ -71,6 +72,8 @@ export class GraphEngine {
     this.app.stage.addChild(this.world);
     this.fit();
     this.enablePanZoom();
+    this.app.ticker.add(this.advanceAutoPan);
+    this.cleanup.push(() => this.app.ticker.remove(this.advanceAutoPan));
     this.ready = true;
   }
 
@@ -94,10 +97,12 @@ export class GraphEngine {
       const s = Math.min(4, Math.max(0.2, this.world.scale.x * Math.exp(-e.deltaY * 0.0015)));
       this.world.scale.set(s);
       this.world.position.set(px - before.x * s, py - before.y * s);
+      this.beginAutoPanToVisibleNode();
       this.emitView();
     };
     let drag: { x: number; y: number; wx: number; wy: number } | null = null;
     const onDown = (e: PointerEvent) => {
+      this.autoPanTarget = null;
       drag = { x: e.clientX, y: e.clientY, wx: this.world.x, wy: this.world.y };
       this.dragMoved = false;
     };
@@ -170,6 +175,31 @@ export class GraphEngine {
     }
     return best ? { x: best.x, y: best.y } : { x, y };
   }
+
+  /** Begin a camera-only correction after zoom leaves the graph out of view. */
+  private beginAutoPanToVisibleNode() {
+    const target = this.constrainPanToVisibleNode(this.world.x, this.world.y);
+    this.autoPanTarget = target.x === this.world.x && target.y === this.world.y ? null : target;
+  }
+
+  /** Ease toward the nearest valid camera position without changing zoom. */
+  private advanceAutoPan = () => {
+    const target = this.autoPanTarget;
+    if (!target) return;
+    const dx = target.x - this.world.x;
+    const dy = target.y - this.world.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 0.25) {
+      this.world.position.set(target.x, target.y);
+      this.autoPanTarget = null;
+      this.emitView();
+      return;
+    }
+    // Cap the screen-space movement while retaining a natural ease-out.
+    const step = Math.min(12, Math.max(0.5, distance * 0.1));
+    this.world.position.set(this.world.x + (dx / distance) * step, this.world.y + (dy / distance) * step);
+    this.emitView();
+  };
 
   private thumbnailScreenBounds(node: Node, zoom: number) {
     const container = this.sprites.get(node.id);
