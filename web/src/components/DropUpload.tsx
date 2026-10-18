@@ -15,9 +15,20 @@ export default function DropUpload({ onIngested }: { onIngested: () => void }) {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   // dragenter/dragleave fire for every element crossed, so count them instead of toggling.
   const depth = useRef(0);
+  // A ref, not the status: the window listeners below close over their first render.
+  const busy = useRef(false);
 
   const send = useCallback(
     async (files: File[]) => {
+      if (busy.current) {
+        setStatus({
+          kind: "error",
+          title: "Still scoring the last drop",
+          detail: "Wait for it to finish. Running two batches at once would load the models twice and race on the combined scores, which are recomputed across the whole collection.",
+        });
+        return;
+      }
+      busy.current = true;
       setStatus({ kind: "working" });
       const body = new FormData();
       for (const file of files) body.append("files", file);
@@ -40,6 +51,8 @@ export default function DropUpload({ onIngested }: { onIngested: () => void }) {
           title: "Couldn't reach the local pipeline",
           detail: `${e}. Is \`npm run dev\` still running?`,
         });
+      } finally {
+        busy.current = false;
       }
     },
     [onIngested],

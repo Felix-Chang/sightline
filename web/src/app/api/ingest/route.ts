@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { NextResponse } from "next/server";
@@ -13,6 +13,12 @@ const EXTS = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff",
 const MAX_BYTES = 50 * 1024 * 1024;
 
 type Failure = { ok: false; title: string; detail?: string };
+
+/**
+ * Module-level, so it also covers a second browser tab: two batches at once would each load a
+ * full copy of the models, and both would finish by rewriting every image's combined scores.
+ */
+let scoring = false;
 
 const fail = (status: number, title: string, detail?: string) =>
   NextResponse.json<Failure>({ ok: false, title, detail }, { status });
@@ -58,26 +64,32 @@ export async function POST(req: Request) {
 
   // next dev runs with web/ as its cwd; the pipeline and its .env live one level up.
   const repoRoot = path.resolve(process.cwd(), "..");
-  try {
-    await access(path.join(repoRoot, ".env"));
-  } catch {
+  const credentials = await credentialProblem(repoRoot);
+  if (credentials) return NextResponse.json(credentials, { status: 412 });
+
+  if (scoring) {
     return fail(
-      412,
-      "No .env at the repo root",
-      "Ingesting writes with the service role key. Copy .env.example to .env beside pyproject.toml and paste the key in.",
+      409,
+      "Already scoring a drop",
+      "Wait for the batch in progress to finish. Two at once would load the models twice and race on the combined scores, which are recomputed across the whole collection.",
     );
   }
+  scoring = true;
 
   const dir = await mkdtemp(path.join(tmpdir(), "sightline-upload-"));
   try {
+    // Flatten to safe names: batch.py walks the folder, so the originals' paths don't matter, and
+    // the index keeps two drops of the same filename apart. Kept so messages can be read back.
+    const names = files.map((file, i) => ({
+      safe: `${i}-${path.basename(file.name).replace(/[^\w.-]+/g, "_")}`,
+      original: file.name,
+    }));
     await Promise.all(
-      files.map(async (file, i) => {
-        // Flatten to a safe name: batch.py walks the folder, so the originals' paths don't matter,
-        // and the index keeps two drops of the same filename apart.
-        const safe = `${i}-${path.basename(file.name).replace(/[^\w.-]+/g, "_")}`;
-        await writeFile(path.join(dir, safe), Buffer.from(await file.arrayBuffer()));
-      }),
+      files.map(async (file, i) => writeFile(path.join(dir, names[i].safe), Buffer.from(await file.arrayBuffer()))),
     );
+    // The pipeline reports the temp paths it was handed; show people the files they dropped.
+    const readable = (text: string) =>
+      names.reduce((acc, n) => acc.split(n.safe).join(n.original), text.split(`${dir}/`).join("").split(dir).join(""));
 
     const run = await spawnPipeline(repoRoot, dir);
     if (run.spawnError) {
@@ -91,6 +103,14 @@ export async function POST(req: Request) {
       );
     }
     if (run.code !== 0) {
+      const output = `${run.stdout}\n${run.stderr}`;
+      if (/\b401\b|invalid api key|invalid jwt|not authorized|unauthorized/i.test(output)) {
+        return fail(
+          500,
+          "Supabase rejected the service role key",
+          `It is set but wrong, or it belongs to a different project. Check SUPABASE_SERVICE_ROLE_KEY in .env against Project Settings → API.\n\n${readable(tail(run.stderr || run.stdout, 4))}`,
+        );
+      }
       return fail(500, `The pipeline exited with code ${run.code}`, tail(run.stderr || run.stdout));
     }
 
@@ -98,19 +118,89 @@ export async function POST(req: Request) {
     const perFile = run.stdout
       .split("\n")
       .filter((line) => /^\[\d+\/\d+] ! /.test(line))
-      .map((line) => line.replace(/^\[\d+\/\d+] ! /, ""));
+      .map((line) => readable(line.replace(/^\[\d+\/\d+] ! /, "")));
     return NextResponse.json({
       ok: true,
       added: summary ? Number(summary[1]) : 0,
       skipped: summary ? Number(summary[2]) : 0,
       failed: summary ? Number(summary[3]) : perFile.length,
       perFile,
-      log: tail(run.stdout),
+      log: readable(tail(run.stdout)),
     });
   } catch (e) {
     return fail(500, "Upload failed", String(e));
   } finally {
+    scoring = false;
     await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * What the pipeline will read: a real environment variable wins, because load_dotenv() in db.py
+ * does not override one. Returns null when the credentials look usable.
+ */
+async function credentialProblem(repoRoot: string): Promise<Failure | null> {
+  let file: Record<string, string> = {};
+  let hasEnvFile = true;
+  try {
+    file = parseEnv(await readFile(path.join(repoRoot, ".env"), "utf8"));
+  } catch {
+    hasEnvFile = false;
+  }
+  const url = process.env.SUPABASE_URL?.trim() || file.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || file.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!hasEnvFile && !key) {
+    return {
+      ok: false,
+      title: "No .env at the repo root",
+      detail: "Ingesting writes with the service role key. Copy .env.example to .env beside pyproject.toml and paste the key in.",
+    };
+  }
+  if (!key) {
+    return {
+      ok: false,
+      title: "The service role key is blank",
+      detail: "SUPABASE_SERVICE_ROLE_KEY is empty in .env. Paste the key from Project Settings → API — it is the secret one, shared by private message only.",
+    };
+  }
+  if (!url) {
+    return { ok: false, title: "SUPABASE_URL is missing", detail: "Add it to .env beside the service role key; .env.example has the project's URL." };
+  }
+  // A JWT-style key carries its role; the usual slip is pasting the public anon key here.
+  const role = jwtRole(key);
+  if (role && role !== "service_role") {
+    return {
+      ok: false,
+      title: `That is the ${role} key, not the service role key`,
+      detail: "The anon key can only read. Ingesting needs the service role key from Project Settings → API, which must stay out of chat and out of .env.example.",
+    };
+  }
+  return null;
+}
+
+/** Enough of the dotenv format for this check: KEY=value, ignoring comments and quotes. */
+function parseEnv(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq < 1) continue;
+    out[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+  }
+  return out;
+}
+
+/** The `role` claim of a Supabase JWT key, or null for the newer sb_secret_* format. */
+function jwtRole(key: string): string | null {
+  const parts = key.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
+    return typeof claims.role === "string" ? claims.role : null;
+  } catch {
+    return null;
   }
 }
 
