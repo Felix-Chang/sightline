@@ -195,8 +195,9 @@ export class GraphEngine {
       this.emitView();
       return;
     }
-    // Cap the screen-space movement while retaining a natural ease-out.
-    const step = Math.min(12, Math.max(0.5, distance * 0.1));
+    // Cover a distant empty viewport quickly, then ease sharply as the node
+    // reaches the edge so the correction never reads as a late teleport.
+    const step = Math.min(80, Math.max(0.5, distance * 0.16));
     this.world.position.set(this.world.x + (dx / distance) * step, this.world.y + (dy / distance) * step);
     this.emitView();
   };
