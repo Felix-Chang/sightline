@@ -48,6 +48,9 @@ export default function Explorer() {
   }, []);
 
   const selectCategory = useCallback((id: string) => {
+    // Filter navigation ends a hover immediately, before the new layout's
+    // effect runs, so its detail card cannot linger during the transition.
+    setHoveredId(null);
     setCategoryId(id);
   }, []);
 
