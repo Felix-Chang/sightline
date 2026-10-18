@@ -41,6 +41,8 @@ export default function Explorer() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const filterRefs = useRef(new Map<string, HTMLButtonElement>());
+  // The skeleton cluster stays over the graph area until the canvas has its first nodes up.
+  const [graphReady, setGraphReady] = useState(false);
 
   const onFocusChange = useCallback((newFocus: number) => {
     setFocus(newFocus);
@@ -120,6 +122,7 @@ export default function Explorer() {
 
   const onSelect = useCallback((id: string | null) => setSelectedId(id), []);
   const onHover = useCallback((id: string | null) => setHoveredId(id), []);
+  const onGraphReady = useCallback(() => setGraphReady(true), []);
 
   // Keyboard: left/right cycles filters, Escape clears the selection.
   useEffect(() => {
@@ -162,29 +165,7 @@ export default function Explorer() {
       </Centered>
     );
   }
-  if (!data)
-    return (
-      <Centered>
-        <div className="flex flex-col items-center gap-3">
-          {/* Masked rather than drawn: the SVG is solid black, so this tints it to match the text. */}
-          <div
-            aria-hidden
-            className="h-14 w-14 bg-muted"
-            style={{
-              maskImage: "url(/sightlinelogo.svg)",
-              WebkitMaskImage: "url(/sightlinelogo.svg)",
-              maskSize: "contain",
-              WebkitMaskSize: "contain",
-              maskRepeat: "no-repeat",
-              WebkitMaskRepeat: "no-repeat",
-              maskPosition: "center",
-              WebkitMaskPosition: "center",
-            }}
-          />
-          <p className="font-label text-sm text-muted">Loading references…</p>
-        </div>
-      </Centered>
-    );
+  if (!data) return <LoadingSkeleton />;
   if (data.images.length === 0) {
     return (
       <Centered>
@@ -210,7 +191,9 @@ export default function Explorer() {
         selectedId={selectedId}
         onHover={onHover}
         onSelect={onSelect}
+        onReady={onGraphReady}
       />
+      <SkeletonCluster done={graphReady} />
 
       {/* Title + filter card */}
       <section className="pointer-events-none absolute left-4 top-4 max-h-[calc(100dvh-5rem)] w-[min(360px,calc(100vw-2rem))] space-y-3 overflow-y-auto">
@@ -313,6 +296,104 @@ function Uploader({ onIngested }: { onIngested: () => void }) {
   return <DropUpload onIngested={onIngested} />;
 }
 
+const SKELETON_FILTER_WIDTHS = [50, 64, 70, 62, 76, 56, 68, 82, 60, 74, 96, 104, 58];
+
+// Placeholder tiles for the loading graph: a sunflower spiral (golden-angle steps) reads like a
+// settled cluster. Fixed, not random, and rounded to whole pixels: the server serialises styles
+// with less float precision than the client computes, which would otherwise break hydration.
+const SKELETON_TILES = Array.from({ length: 34 }, (_, i) => {
+  const angle = i * 2.39996; // golden angle in radians
+  const radius = 26 * Math.sqrt(i + 1.5);
+  const tall = i % 3 !== 0; // most references are portrait posters
+  const w = tall ? 26 : 34;
+  const h = tall ? 34 : 26;
+  return {
+    left: Math.round(Math.cos(angle) * radius - w / 2),
+    top: Math.round(Math.sin(angle) * radius - h / 2),
+    w,
+    h,
+    delay: (i % 7) * 140,
+  };
+});
+
+/** Shown until the first data arrives: the real layout's outline, so the page doesn't jump. */
+function LoadingSkeleton() {
+  const block = "rounded bg-border/70 motion-safe:animate-pulse";
+  return (
+    <main className="relative h-dvh w-full select-none" aria-busy="true">
+      {/* Mirrors the loaded filter card's 37px logo/title row, text rhythm, and 26px filter pills. */}
+      <section className="absolute left-4 top-4 w-[min(360px,calc(100vw-2rem))]" aria-hidden>
+        <div className={`${CARD} p-5`}>
+          <div className="flex h-[37px] items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className={`${block} h-[37px] w-[37px] shrink-0 rounded-full`} />
+              <div className={`${block} h-7 w-[116px]`} />
+            </div>
+            <div className={`${block} h-4 w-10`} />
+          </div>
+          <div className={`${block} mt-2 h-4 w-[252px]`} />
+          <div className={`${block} mt-5 h-4 w-[42px]`} />
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {SKELETON_FILTER_WIDTHS.map((w, i) => (
+              <div key={i} className={`${block} h-[26px] rounded-full`} style={{ width: w }} />
+            ))}
+          </div>
+        </div>
+      </section>
+      <SkeletonCluster done={false} />
+    </main>
+  );
+}
+
+/**
+ * Pulsing tiles where the graph will be, with the logo and status in the middle. Rendered both while
+ * data loads and right after (until the canvas reports ready), then fades out and unmounts.
+ */
+function SkeletonCluster({ done }: { done: boolean }) {
+  const [gone, setGone] = useState(false);
+  // Unmount after the fade on a timer rather than `transitionend`, which never fires in a tab that
+  // isn't painting (backgrounded during load) and would leave the overlay mounted.
+  useEffect(() => {
+    if (!done) return;
+    const t = setTimeout(() => setGone(true), 350);
+    return () => clearTimeout(t);
+  }, [done]);
+  if (gone) return null;
+  return (
+    <div
+      className={`pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity duration-300 md:left-[380px] ${done ? "opacity-0" : "opacity-100"}`}
+    >
+      <div className="relative h-0 w-0" aria-hidden>
+        {SKELETON_TILES.map((t, i) => (
+          <div
+            key={i}
+            className="absolute rounded-[2px] bg-border/80 motion-safe:animate-pulse"
+            style={{ left: t.left, top: t.top, width: t.w, height: t.h, animationDelay: `${t.delay}ms` }}
+          />
+        ))}
+      </div>
+      <div className="absolute flex flex-col items-center gap-3 rounded-2xl bg-canvas/90 px-6 py-4" role="status">
+        {/* Masked rather than drawn: the SVG is solid black, so this tints it to match the text. */}
+        <div
+          aria-hidden
+          className="h-14 w-14 bg-muted"
+          style={{
+            maskImage: "url(/sightlinelogo.svg)",
+            WebkitMaskImage: "url(/sightlinelogo.svg)",
+            maskSize: "contain",
+            WebkitMaskSize: "contain",
+            maskRepeat: "no-repeat",
+            WebkitMaskRepeat: "no-repeat",
+            maskPosition: "center",
+            WebkitMaskPosition: "center",
+          }}
+        />
+        <p className="font-label text-sm text-muted">Loading references…</p>
+      </div>
+    </div>
+  );
+}
+
 function Centered({ children }: { children: React.ReactNode }) {
   return (
     <main className="flex h-dvh flex-col items-center justify-center px-4 text-center">
@@ -405,17 +486,30 @@ function DetailCard({ image, pinned, categories, filtered, subsByCat, onClose }:
   subsByCat: Map<string, Subclass[]>;
   onClose: () => void;
 }) {
+  // The card is keyed by image id, so this resets for every new image.
+  const [loaded, setLoaded] = useState(false);
+  // Reserve the image's real shape (max 240px tall) so the card doesn't jump when it arrives.
+  const aspect = image.width && image.height ? image.width / image.height : 1;
   return (
     <aside
       className={`absolute right-4 top-4 flex max-h-[calc(100dvh-2rem)] w-[min(340px,calc(100vw-2rem))] flex-col overflow-hidden ${CARD}`}
     >
       <div className="border-b border-border bg-canvas p-3">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={image.fullUrl}
-          alt={image.filename ?? "reference"}
-          className="mx-auto max-h-60 object-contain shadow-sm"
-        />
+        <div className="relative mx-auto" style={{ width: `min(100%, ${240 * aspect}px)`, aspectRatio: aspect }}>
+          {!loaded && <div aria-hidden className="absolute inset-0 rounded-[2px] bg-border/80 motion-safe:animate-pulse" />}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            // A cached image can finish before React attaches onLoad; the ref catches that case.
+            ref={(el) => {
+              if (el?.complete && el.naturalWidth > 0) setLoaded(true);
+            }}
+            src={image.fullUrl}
+            alt={image.filename ?? "reference"}
+            onLoad={() => setLoaded(true)}
+            onError={() => setLoaded(true)}
+            className={`absolute inset-0 h-full w-full object-contain shadow-sm transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+          />
+        </div>
       </div>
       <div className="overflow-y-auto p-5">
         <div className="flex items-start justify-between gap-2">

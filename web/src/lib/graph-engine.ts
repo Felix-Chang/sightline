@@ -6,6 +6,10 @@ import { RING_RADIUS, type Anchor, type Target } from "./layout";
 import { anchorColor, canvasHex, theme } from "./theme";
 
 const THUMB = 64;
+// Skeleton tiles: a warm gray a step darker than the paper, gently pulsing until the photo loads.
+const SKELETON_TINT = 0xdedbd2;
+const SKELETON_PULSE_SPEED = 0.004; // radians per ms (~1.6 s per breath)
+const THUMB_FADE_MS = 280;
 const ACTIVE_SCALE = 1.7;
 const COLLISION_RADIUS = THUMB * 0.56;
 
@@ -33,6 +37,11 @@ export class GraphEngine {
   private overlayLayer = new Container();
   private sprites = new Map<string, Container>();
   private pending = new Set<string>();
+  // Skeleton tiles still waiting for their thumbnail (value: pulse phase) and photos fading in.
+  private skeletons = new Map<Sprite, number>();
+  private fading = new Map<Sprite, number>();
+  private skeletonTicking = false;
+  private reducedMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   private nodes = new Map<string, Node>();
   private sim: Simulation<Node, Link> | null = null;
   private collide: ForceCollide<Node> | null = null;
@@ -222,51 +231,107 @@ export class GraphEngine {
     // Claim ids synchronously so overlapping calls (React effects, realtime) never double-add.
     const fresh = images.filter((img) => !this.sprites.has(img.id) && !this.pending.has(img.id));
     fresh.forEach((img) => this.pending.add(img.id));
-    await Promise.all(
-      fresh.map(async (img) => {
-        let tex: Texture;
-        try {
-          tex = await Assets.load<Texture>({ src: img.thumbUrl, parser: "loadTextures" });
-        } catch {
-          tex = Texture.WHITE;
-        }
-        if (this.destroyed) return;
-        const c = new Container();
-        const sprite = new Sprite(tex);
-        const s = THUMB / Math.max(tex.width, tex.height);
-        sprite.scale.set(s);
-        sprite.anchor.set(0.5);
-        const shadow = new Graphics();
-        shadow.filters = [new BlurFilter({ strength: 4, quality: 2, padding: 12 })];
-        const frame = new Graphics();
-        c.addChild(shadow, frame, sprite);
-        c.label = img.id;
-        c.eventMode = "static";
-        c.cursor = "pointer";
-        c.on("pointerover", () => this.setHover(img.id));
-        c.on("pointerout", () => this.setHover(null));
-        c.on("pointertap", () => {
-          if (!this.dragMoved) this.onSelect(img.id);
-        });
-        this.nodeLayer.addChild(c);
-        this.sprites.set(img.id, c);
-        this.pending.delete(img.id);
-        // New images fly in from the center.
-        this.nodes.set(img.id, {
-          id: img.id,
-          x: (Math.random() - 0.5) * 40,
-          y: (Math.random() - 0.5) * 40,
-          tx: 0,
-          ty: 0,
-          weights: [],
-          scale: 1,
-          targetScale: 1,
-          frameColorProgress: 0,
-        });
-        this.drawFrame(img.id);
-      }),
-    );
+    // Every node goes on screen right away as a skeleton (a pulsing gray tile at the image's real
+    // aspect ratio), so the layout settles at once; each photo then fades in over its skeleton
+    // when its thumbnail arrives. No tile changes size when that happens, so nothing jumps.
+    for (const img of fresh) {
+      if (this.destroyed) return;
+      const c = new Container();
+      const sprite = new Sprite(Texture.WHITE);
+      sprite.anchor.set(0.5);
+      const aspect = img.width && img.height ? img.width / img.height : 1;
+      sprite.width = aspect >= 1 ? THUMB : THUMB * aspect;
+      sprite.height = aspect >= 1 ? THUMB / aspect : THUMB;
+      sprite.tint = SKELETON_TINT;
+      const shadow = new Graphics();
+      shadow.filters = [new BlurFilter({ strength: 4, quality: 2, padding: 12 })];
+      const frame = new Graphics();
+      c.addChild(shadow, frame, sprite);
+      c.label = img.id;
+      c.eventMode = "static";
+      c.cursor = "pointer";
+      c.on("pointerover", () => this.setHover(img.id));
+      c.on("pointerout", () => this.setHover(null));
+      c.on("pointertap", () => {
+        if (!this.dragMoved) this.onSelect(img.id);
+      });
+      this.nodeLayer.addChild(c);
+      this.sprites.set(img.id, c);
+      this.pending.delete(img.id);
+      // New images fly in from the center.
+      this.nodes.set(img.id, {
+        id: img.id,
+        x: (Math.random() - 0.5) * 40,
+        y: (Math.random() - 0.5) * 40,
+        tx: 0,
+        ty: 0,
+        weights: [],
+        scale: 1,
+        targetScale: 1,
+        frameColorProgress: 0,
+      });
+      this.drawFrame(img.id);
+      this.skeletons.set(sprite, Math.random() * Math.PI * 2); // own phase, so tiles don't pulse in lockstep
+      void this.loadThumbnail(img, sprite);
+    }
+    this.ensureSkeletonTicker();
     this.applyLayout(this.layout, 0.9);
+  }
+
+  /** Swaps a skeleton for its thumbnail once loaded, fading the photo in at the same size. */
+  private async loadThumbnail(img: ImageNode, sprite: Sprite) {
+    let tex: Texture | null = null;
+    try {
+      tex = await Assets.load<Texture>({ src: img.thumbUrl, parser: "loadTextures" });
+    } catch {
+      tex = null; // keep a calm gray tile rather than a stark white box
+    }
+    if (this.destroyed || sprite.destroyed) return;
+    this.skeletons.delete(sprite);
+    if (!tex) {
+      sprite.alpha = 1;
+      this.ensureSkeletonTicker();
+      return;
+    }
+    const w = sprite.width; // keep the skeleton's footprint so neighbours and frames don't shift
+    const h = sprite.height;
+    sprite.texture = tex;
+    sprite.tint = 0xffffff;
+    sprite.width = w;
+    sprite.height = h;
+    sprite.alpha = 0;
+    this.fading.set(sprite, performance.now());
+    this.ensureSkeletonTicker();
+  }
+
+  /** Pulses skeleton tiles and fades in loaded photos; runs only while either is happening. */
+  private skeletonTick = () => {
+    const now = performance.now();
+    for (const [sprite, phase] of this.skeletons) {
+      if (sprite.destroyed) this.skeletons.delete(sprite);
+      else sprite.alpha = this.reducedMotion ? 0.8 : 0.7 + 0.3 * Math.sin(now * SKELETON_PULSE_SPEED + phase);
+    }
+    for (const [sprite, start] of this.fading) {
+      const t = Math.min(1, (now - start) / THUMB_FADE_MS);
+      if (sprite.destroyed || t >= 1) {
+        if (!sprite.destroyed) sprite.alpha = 1;
+        this.fading.delete(sprite);
+      } else {
+        sprite.alpha = t * t * (3 - 2 * t); // smoothstep
+      }
+    }
+    this.ensureSkeletonTicker();
+  };
+
+  private ensureSkeletonTicker() {
+    const busy = this.skeletons.size > 0 || this.fading.size > 0;
+    if (busy && !this.skeletonTicking) {
+      this.app.ticker.add(this.skeletonTick);
+      this.skeletonTicking = true;
+    } else if (!busy && this.skeletonTicking) {
+      this.app.ticker.remove(this.skeletonTick);
+      this.skeletonTicking = false;
+    }
   }
 
   applyLayout(layout: GraphLayout, alpha = 0.8) {
