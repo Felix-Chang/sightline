@@ -221,13 +221,10 @@ export default function Explorer() {
       {/* Title + filter card */}
       <section className="pointer-events-none absolute left-4 top-4 max-h-[calc(100dvh-5rem)] w-[min(360px,calc(100vw-2rem))] space-y-3 overflow-y-auto">
         <div className={`pointer-events-auto relative z-10 ${CARD} p-5`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/sightlinelogo.svg" alt="" aria-hidden className="h-[37px] w-[37px] shrink-0" />
-              <h1 className="font-serif text-[28px] font-bold leading-none tracking-tight">SightLine</h1>
-            </div>
-            <span className="font-label text-[11px] text-muted">{data.images.length} refs</span>
+          <div className="flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/sightlinelogo.svg" alt="" aria-hidden className="h-[37px] w-[37px] shrink-0" />
+            <h1 className="font-serif text-[28px] font-bold leading-none tracking-tight">SightLine</h1>
           </div>
           <p className="mt-2 text-xs text-muted">
             References sorted by visual language, not subject.
@@ -269,10 +266,9 @@ export default function Explorer() {
             <CategoryCard
               category={category}
               subs={subs}
-              images={data.images}
             />
           ) : (
-            <NoneCard totalRefs={data.images.length} />
+            <NoneCard />
           )}
         </div>
       </section>
@@ -377,12 +373,11 @@ function LoadingSkeleton() {
       {/* Mirrors the loaded filter card's 37px logo/title row, text rhythm, and 26px filter pills. */}
       <section className="absolute left-4 top-4 w-[min(360px,calc(100vw-2rem))]" aria-hidden>
         <div className={`${CARD} p-5`}>
-          <div className="flex h-[37px] items-center justify-between">
+          <div className="flex h-[37px] items-center">
             <div className="flex items-center gap-2">
               <div className={`${block} h-[37px] w-[37px] shrink-0 rounded-full`} />
               <div className={`${block} h-7 w-[116px]`} />
             </div>
-            <div className={`${block} h-4 w-10`} />
           </div>
           <div className={`${block} mt-2 h-4 w-[252px]`} />
           <div className={`${block} mt-5 h-4 w-[42px]`} />
@@ -500,34 +495,15 @@ function FilterPill({
   );
 }
 
-function NoneCard({ totalRefs }: { totalRefs: number }) {
+function NoneCard() {
   return (
     <div className={`pointer-events-auto ${CARD} p-5`}>
-      <div className="flex items-baseline justify-between">
-        <h2 className="font-serif text-[26px] font-bold leading-tight">
-          None
-        </h2>
-        <span className="rounded-full border border-border/70 bg-canvas px-2.5 py-0.5 font-label text-[10px] tabular-nums text-muted">
-          {totalRefs} refs
-        </span>
-      </div>
+      <h2 className="font-serif text-[26px] font-bold leading-tight">
+        None
+      </h2>
       <p className="mt-1.5 text-xs text-muted leading-relaxed">
         Nodes are connected to the other nodes that are similar in score.
       </p>
-      <Eyebrow className="mt-5">Similarity Web</Eyebrow>
-      <div className="mt-2 rounded-xl border border-border bg-canvas/40 p-3 text-xs">
-        <div className="flex items-center justify-between">
-          <span className="font-medium uppercase tracking-[0.08em] text-fg text-[11px]">
-            K-Nearest Neighbors
-          </span>
-          <span className="rounded-full border border-border/70 bg-canvas px-2 py-0.5 font-label text-[10px] tabular-nums text-muted">
-            3 links / node
-          </span>
-        </div>
-        <p className="mt-1.5 text-muted leading-normal text-[11px]">
-          Click any reference node to trace its connections and spread its selection along connecting lines to similar images.
-        </p>
-      </div>
     </div>
   );
 }
@@ -535,32 +511,10 @@ function NoneCard({ totalRefs }: { totalRefs: number }) {
 function CategoryCard({
   category,
   subs,
-  images = [],
 }: {
   category: Category;
   subs: Subclass[];
-  images?: ImageNode[];
 }) {
-  const counts = useMemo(() => {
-    const map = new Map<string, number>();
-    subs.forEach((s) => map.set(s.id, 0));
-    for (const img of images) {
-      let bestSub = "";
-      let maxScore = -1;
-      for (const s of subs) {
-        const score = img.scores[s.id] ?? 0;
-        if (score > maxScore) {
-          maxScore = score;
-          bestSub = s.id;
-        }
-      }
-      if (bestSub && maxScore > 0) {
-        map.set(bestSub, (map.get(bestSub) ?? 0) + 1);
-      }
-    }
-    return map;
-  }, [images, subs]);
-
   return (
     <div className={`pointer-events-auto ${CARD} p-5`}>
       <h2 className="font-serif text-[26px] font-bold leading-tight">
@@ -576,9 +530,6 @@ function CategoryCard({
             <div className="flex items-center gap-2">
               <span className="w-4 shrink-0 font-label text-[10px] tabular-nums text-muted">{String(i + 1).padStart(2, "0")}</span>
               <span className="font-medium uppercase tracking-[0.08em] text-fg">{s.name}</span>
-              <span className="ml-auto rounded-full border border-border/70 bg-canvas px-2 py-0.5 font-label text-[10px] tabular-nums text-muted">
-                {counts.get(s.id) ?? 0} refs
-              </span>
             </div>
             <p className="mt-0.5 pl-6 text-muted">{s.definition}</p>
           </li>

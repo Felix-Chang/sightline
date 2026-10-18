@@ -38,6 +38,7 @@ type InfectionState = {
   links: InfectedLink[];
   neighborIds: string[];
   framesInfected: boolean;
+  wrapStarted?: boolean;
 };
 
 export type GraphLayout = { anchors: Anchor[]; targets: Map<string, Target>; links: [string, string][]; ring: boolean; showLinks: boolean };
@@ -49,6 +50,7 @@ export class GraphEngine {
   private edgeLayer = new Graphics();
   private anchorLayer = new Container();
   private nodeLayer = new Container();
+  private perimeterLayer = new Graphics();
   private labelLayer = new Container();
   private overlayLayer = new Container();
   private sprites = new Map<string, Container>();
@@ -105,8 +107,8 @@ export class GraphEngine {
       return;
     }
     this.el.appendChild(this.app.canvas);
-    // labelLayer last: anchor names stay readable over thumbnails that drift onto them.
-    this.world.addChild(this.edgeLayer, this.anchorLayer, this.nodeLayer, this.labelLayer, this.overlayLayer);
+    // perimeterLayer sits above nodeLayer to cleanly wrap thumbnails with no white border bleed
+    this.world.addChild(this.edgeLayer, this.anchorLayer, this.nodeLayer, this.perimeterLayer, this.labelLayer, this.overlayLayer);
     this.app.stage.addChild(this.world);
     this.fit();
     this.enablePanZoom();
@@ -806,6 +808,7 @@ export class GraphEngine {
     if (!this.infection) return;
     const oldNeighbors = [...this.infection.neighborIds];
     this.infection = null;
+    this.perimeterLayer.clear();
     for (const nid of oldNeighbors) {
       this.drawFrame(nid);
     }
@@ -851,6 +854,7 @@ export class GraphEngine {
       links: chosen,
       neighborIds,
       framesInfected: false,
+      wrapStarted: false,
     };
 
     // Cleanly restore any old neighbors that are not in the new infection!
@@ -868,6 +872,14 @@ export class GraphEngine {
     if (!this.infection || !this.layout.showLinks) return;
     const elapsed = performance.now() - this.infection.startTime;
     const rawT = Math.min(1, Math.max(0, elapsed / this.infection.duration));
+
+    // When the line arrives (rawT >= 0.5), color over neighbor outlines so no white shows underneath wrapping
+    if (rawT >= 0.5 && !this.infection.wrapStarted) {
+      this.infection.wrapStarted = true;
+      for (const nid of this.infection.neighborIds) {
+        this.drawFrame(nid);
+      }
+    }
 
     // When the perimeter infection is complete (rawT >= 1.0), lock destination frames to infected outline
     if (rawT >= 1.0 && !this.infection.framesInfected) {
@@ -894,7 +906,7 @@ export class GraphEngine {
     progress: number,
   ) {
     if (progress <= 0) return;
-    const pad = 1.5;
+    const pad = 0.5;
     const W = w + pad * 2;
     const H = h + pad * 2;
     const hw = W / 2;
@@ -949,7 +961,7 @@ export class GraphEngine {
     const dist = Math.min(halfL, progress * halfL);
 
     if (progress >= 1) {
-      g.rect(cx - hw, cy - hh, W, H).stroke({ width: 1.5, color: theme.accent, alpha: 0.9 });
+      g.rect(cx - hw, cy - hh, W, H).stroke({ width: 1.5, color: theme.accent, alpha: 0.95 });
       return;
     }
 
@@ -968,20 +980,21 @@ export class GraphEngine {
     // Draw clockwise and counter-clockwise perimeter branches
     drawBeam(s0, s0 + dist);
     drawBeam(s0, s0 - dist);
-    g.stroke({ width: 1.8, color: theme.accent, alpha: 0.95 });
+    g.stroke({ width: 2.0, color: theme.accent, alpha: 0.96 });
 
     // Traveling sparks at the leading perimeter tips
     const tipCW = pointAt(s0 + dist);
     const tipCCW = pointAt(s0 - dist);
-    g.circle(tipCW.x, tipCW.y, 2).fill({ color: theme.accent });
-    g.circle(tipCW.x, tipCW.y, 0.9).fill({ color: 0xffffff });
-    g.circle(tipCCW.x, tipCCW.y, 2).fill({ color: theme.accent });
-    g.circle(tipCCW.x, tipCCW.y, 0.9).fill({ color: 0xffffff });
+    g.circle(tipCW.x, tipCW.y, 2.4).fill({ color: theme.accent });
+    g.circle(tipCW.x, tipCW.y, 1.0).fill({ color: 0xffffff });
+    g.circle(tipCCW.x, tipCCW.y, 2.4).fill({ color: theme.accent });
+    g.circle(tipCCW.x, tipCCW.y, 1.0).fill({ color: 0xffffff });
   }
 
   private drawEdges() {
     const g = this.edgeLayer;
     g.clear();
+    this.perimeterLayer.clear();
 
     // 1. Neighbor web (when filtering by None)
     if (this.layout.showLinks) {
@@ -1059,7 +1072,7 @@ export class GraphEngine {
             const sprite = container?.children[2] as Sprite | undefined;
             const nw = (sprite?.width ?? THUMB) * N.scale;
             const nh = (sprite?.height ?? THUMB) * N.scale;
-            this.drawPerimeterInfection(g, p2x, p2y, nw, nh, p0x, p0y, pPerim);
+            this.drawPerimeterInfection(this.perimeterLayer, p2x, p2y, nw, nh, p0x, p0y, pPerim);
           }
         }
       }
@@ -1139,9 +1152,10 @@ export class GraphEngine {
     const c = this.sprites.get(id);
     if (!c) return;
     const active = id === this.hovered || id === this.selected;
-    const isInfectedNeighbor =
+    const isNeighbor =
       this.layout.showLinks &&
-      Boolean(this.infection?.framesInfected && this.infection.neighborIds.includes(id));
+      Boolean(this.infection && this.infection.neighborIds.includes(id));
+    const isNeighborColored = isNeighbor && (this.infection?.wrapStarted || this.infection?.framesInfected);
 
     const shadow = c.children[0] as Graphics;
     const frame = c.children[1] as Graphics;
@@ -1163,12 +1177,12 @@ export class GraphEngine {
       // Selected image gets a prominent, bold outline
       const activePad = id === this.selected ? 3.5 * scaleProgress : pad;
       frame.rect(-w / 2 - activePad, -h / 2 - activePad, w + activePad * 2, h + activePad * 2).fill({ color });
-    } else if (isInfectedNeighbor) {
-      // Infected destination node: distinguishable hairline outline, lighter than selected
-      frame.rect(-w / 2 - 1.5, -h / 2 - 1.5, w + 3, h + 3).stroke({
+    } else if (isNeighborColored) {
+      // Temporarily color over the white outline on neighbor nodes so no white line bleeds through
+      frame.rect(-w / 2 - 0.5, -h / 2 - 0.5, w + 1, h + 1).stroke({
         width: 1.5,
         color: theme.accent,
-        alpha: 0.9,
+        alpha: this.infection?.framesInfected ? 0.95 : 0.6,
       });
     } else {
       frame.rect(-w / 2 - 0.5, -h / 2 - 0.5, w + 1, h + 1).stroke({ width: 1, color: theme.surface });
