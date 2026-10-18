@@ -150,7 +150,24 @@ export default function Explorer() {
   if (!data)
     return (
       <Centered>
-        <p className="font-label text-sm text-muted">Loading references…</p>
+        <div className="flex flex-col items-center gap-3">
+          {/* Masked rather than drawn: the SVG is solid black, so this tints it to match the text. */}
+          <div
+            aria-hidden
+            className="h-14 w-14 bg-muted"
+            style={{
+              maskImage: "url(/sightlinelogo.svg)",
+              WebkitMaskImage: "url(/sightlinelogo.svg)",
+              maskSize: "contain",
+              WebkitMaskSize: "contain",
+              maskRepeat: "no-repeat",
+              WebkitMaskRepeat: "no-repeat",
+              maskPosition: "center",
+              WebkitMaskPosition: "center",
+            }}
+          />
+          <p className="font-label text-sm text-muted">Loading references…</p>
+        </div>
       </Centered>
     );
   if (data.images.length === 0) {
