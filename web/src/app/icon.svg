@@ -7,7 +7,7 @@
 	</defs>
 	<g clip-path="url(#rounded)">
 	<rect width="1080" height="1080" fill="#ffffff"/>
-	<g id="Layer 1">
+	<g id="Layer 1" transform="translate(540,540) scale(0.82) translate(-540,-540)">
 		<path id="Shape 1 copy 16" fill-rule="evenodd" class="s0" d="m541.81 531.76c0 0 73.97 256.75-369.47 201.46-8.51-1.07 472.34 308.26 581.61-300.42 0.69-3.86-212.14 98.96-212.14 98.96z"/>
 		<path id="Shape 1 copy 17" fill-rule="evenodd" class="s0" d="m538.85 530.81c0 0-74.93-247.32 368.51-192.03 8.52 1.07-471.38-317.69-580.65 290.99-0.69 3.86 212.14-98.96 212.14-98.96z"/>
 		<path id="Shape 2 copy 17" fill-rule="evenodd" class="s0" d="m631.19 824.18c40.51-2.15 213.53-19.69 433.42-256.62 4.26-4.59-117.86-177.43-118.3-174.47-8.42 57.78-72.88 291.63-315.12 431.09z"/>
