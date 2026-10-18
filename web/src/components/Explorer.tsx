@@ -236,7 +236,7 @@ export default function Explorer() {
       {/* Focus slider */}
       {category && (
         <div
-          className={`absolute bottom-4 left-4 flex items-center gap-3 ${CARD} px-4 py-2.5 font-label text-[11px] text-muted`}
+          className={`absolute bottom-4 left-4 flex w-[min(360px,calc(100vw-2rem))] items-center gap-3 ${CARD} px-4 py-2.5 font-label text-[11px] text-muted`}
         >
           <label htmlFor="focus">Separate</label>
           <input
@@ -247,7 +247,7 @@ export default function Explorer() {
             step={0.5}
             value={9 - focus}
             onChange={(e) => onFocusChange(9 - Number(e.target.value))}
-            className="w-28 cursor-pointer accent-accent"
+            className="min-w-0 flex-1 cursor-pointer accent-accent"
           />
           <span>Blend</span>
         </div>
@@ -255,7 +255,7 @@ export default function Explorer() {
 
       {/* Carded like the slider so the background texture never runs through the text. */}
       <p
-        className={`absolute bottom-4 right-4 hidden ${CARD} px-4 py-2.5 font-label text-[11px] text-muted md:block`}
+        className={`absolute bottom-4 right-4 hidden w-[min(340px,calc(100vw-2rem))] ${CARD} px-4 py-2.5 text-center font-label text-[11px] text-muted md:block`}
       >
         scroll to zoom · drag to pan · ← → to change filters
       </p>
