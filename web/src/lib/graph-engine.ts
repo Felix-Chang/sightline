@@ -232,6 +232,12 @@ export class GraphEngine {
       } else {
         node.scale = node.targetScale;
       }
+    }
+    // A hovered neighbor yields only once its growing frame reaches a pinned
+    // thumbnail. Moving it in tiny steps keeps the selected image anchored and
+    // avoids the old one-frame clearance jump.
+    this.resolveHoveredPinnedContact();
+    for (const node of this.nodes.values()) {
       const sprite = this.sprites.get(node.id);
       sprite?.position.set(node.x ?? 0, node.y ?? 0);
       sprite?.scale.set(node.scale);
@@ -391,16 +397,16 @@ export class GraphEngine {
       node.targetScale = active ? ACTIVE_SCALE : 1;
     }
 
-    if (!this.layoutTransition) this.lockActiveNodes();
+    // During a filter transition a pre-existing selection still travels to its
+    // new data position. A new hover, however, must lock at its current spot.
+    if (!this.layoutTransition || this.hovered) this.lockActiveNodes();
     // Collision grows with the visible thumbnail, so only physical contact displaces a neighbor.
     this.collide?.radius((d) => COLLISION_RADIUS * d.scale);
-    this.sim?.alpha(Math.max(this.sim.alpha(), 0.55)).restart();
+    // Scaling needs a few ticks, not a wholesale reheat of the filtered layout.
+    this.sim?.alpha(Math.max(this.sim.alpha(), 0.08)).restart();
   }
 
   private lockActiveNodes() {
-    const hovered = this.hovered ? this.nodes.get(this.hovered) : null;
-    if (hovered && hovered.id !== this.selected) this.nudgeHoveredPastPinned(hovered);
-
     for (const node of this.nodes.values()) {
       const active = node.id === this.selected || node.id === this.hovered;
       if (active) {
@@ -416,10 +422,11 @@ export class GraphEngine {
     }
   }
 
-  /** A new hover yields only when it would overlap an already pinned thumbnail. */
-  private nudgeHoveredPastPinned(hovered: Node) {
+  /** Let a hovered node ease just far enough away from a selected node on contact. */
+  private resolveHoveredPinnedContact() {
+    const hovered = this.hovered ? this.nodes.get(this.hovered) : null;
     const pinned = this.selected ? this.nodes.get(this.selected) : null;
-    if (!pinned || pinned.id === hovered.id) return;
+    if (!hovered || !pinned || pinned.id === hovered.id) return;
 
     let dx = (hovered.x ?? 0) - (pinned.x ?? 0);
     let dy = (hovered.y ?? 0) - (pinned.y ?? 0);
@@ -430,12 +437,13 @@ export class GraphEngine {
       dy = 0;
       distance = 1;
     }
-    const clearance = COLLISION_RADIUS * (hovered.targetScale + pinned.targetScale) + 2;
+    const clearance = COLLISION_RADIUS * (hovered.scale + pinned.scale);
     if (distance >= clearance) return;
-    const x = (pinned.x ?? 0) + (dx / distance) * clearance;
-    const y = (pinned.y ?? 0) + (dy / distance) * clearance;
-    hovered.x = x;
-    hovered.y = y;
+    const move = Math.min(clearance - distance, 1.5);
+    hovered.x = (hovered.x ?? 0) + (dx / distance) * move;
+    hovered.y = (hovered.y ?? 0) + (dy / distance) * move;
+    hovered.fx = hovered.x;
+    hovered.fy = hovered.y;
     hovered.vx = 0;
     hovered.vy = 0;
   }
