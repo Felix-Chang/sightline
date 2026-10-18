@@ -93,11 +93,13 @@ export default function Explorer() {
   );
 
   // Active category display tracking for entrance (slide-down) and exit (slide-up) animations
+  const [prevCategory, setPrevCategory] = useState<Category | null>(null);
   const [displayedCategory, setDisplayedCategory] = useState<Category | null>(null);
   const [displayedSubs, setDisplayedSubs] = useState<Subclass[]>([]);
   const [isClosingCategory, setIsClosingCategory] = useState(false);
 
-  useEffect(() => {
+  if (category !== prevCategory) {
+    setPrevCategory(category);
     if (category) {
       setDisplayedCategory(category);
       setDisplayedSubs(subs);
@@ -105,7 +107,7 @@ export default function Explorer() {
     } else if (displayedCategory) {
       setIsClosingCategory(true);
     }
-  }, [category, subs, displayedCategory]);
+  }
 
   const onCategoryAnimationEnd = useCallback(() => {
     if (isClosingCategory) {
@@ -172,17 +174,19 @@ export default function Explorer() {
   const detail = data?.images.find((i) => i.id === detailId) ?? null;
 
   // Active detail tracking for entrance (slide-in) and exit (slide-out) animations
+  const [prevDetail, setPrevDetail] = useState<ImageNode | null>(null);
   const [displayedDetail, setDisplayedDetail] = useState<ImageNode | null>(null);
   const [isClosingDetail, setIsClosingDetail] = useState(false);
 
-  useEffect(() => {
+  if (detail !== prevDetail) {
+    setPrevDetail(detail);
     if (detail) {
       setDisplayedDetail(detail);
       setIsClosingDetail(false);
     } else if (displayedDetail) {
       setIsClosingDetail(true);
     }
-  }, [detail, displayedDetail]);
+  }
 
   const onDetailAnimationEnd = useCallback(() => {
     if (isClosingDetail) {
