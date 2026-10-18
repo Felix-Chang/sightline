@@ -145,7 +145,7 @@ export class AsciiPulse {
       this.raf = requestAnimationFrame(this.frame); // graph hasn't reported its layout yet
       return;
     }
-    const ringT = this.ringStart === null ? null : (now - this.ringStart) / RING_MS;
+    const ringT = this.ringStart === null ? null : Math.max(0, Math.min(1, (now - this.ringStart) / RING_MS));
     const shimmerT = this.shimmerStart === null ? null : (now - this.shimmerStart) / SHIMMER_MS;
     if (ringT !== null && ringT >= 1) this.ringStart = null;
     if (shimmerT !== null && shimmerT >= 1) this.shimmerStart = null;
@@ -217,10 +217,10 @@ export class AsciiPulse {
     const ctx = this.ctx!;
     const { x, y } = this.ringCenter;
     const maxR = Math.max(Math.hypot(x, y), Math.hypot(width - x, y), Math.hypot(x, height - y), Math.hypot(width - x, height - y)) + RING_HALF_WIDTH;
-    const radius = easeOutCubic(t) * maxR;
+    const radius = easeOutCubic(Math.max(0, Math.min(1, t))) * maxR;
     const tone = Math.round(RING_PEAK * (1 - t) ** 1.2 * 255);
     const inner = Math.max(0, radius - RING_HALF_WIDTH) / DOWNSAMPLE;
-    const outer = (radius + RING_HALF_WIDTH) / DOWNSAMPLE;
+    const outer = Math.max(0, radius + RING_HALF_WIDTH) / DOWNSAMPLE;
     const g = ctx.createRadialGradient(x / DOWNSAMPLE, y / DOWNSAMPLE, inner, x / DOWNSAMPLE, y / DOWNSAMPLE, outer);
     g.addColorStop(0, "rgb(0,0,0)");
     g.addColorStop(0.5, `rgb(${tone},${tone},${tone})`);
