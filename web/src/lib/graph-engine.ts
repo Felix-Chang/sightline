@@ -11,6 +11,7 @@ const SKELETON_TINT = 0xdedbd2;
 const SKELETON_PULSE_SPEED = 0.004; // radians per ms (~1.6 s per breath)
 const THUMB_FADE_MS = 280;
 const ACTIVE_SCALE = 1.7;
+const CONNECTED_SCALE = 1.2;
 const COLLISION_RADIUS = THUMB * 0.56;
 
 type Node = SimulationNodeDatum & {
@@ -812,6 +813,7 @@ export class GraphEngine {
     for (const nid of oldNeighbors) {
       this.drawFrame(nid);
     }
+    this.updateInteraction();
     this.drawEdges();
   }
 
@@ -864,6 +866,8 @@ export class GraphEngine {
       }
     }
 
+    this.updateInteraction();
+
     // Immediately render first frame of infection
     this.drawEdges();
   }
@@ -873,12 +877,17 @@ export class GraphEngine {
     const elapsed = performance.now() - this.infection.startTime;
     const rawT = Math.min(1, Math.max(0, elapsed / this.infection.duration));
 
-    // When the line arrives (rawT >= 0.5), color over neighbor outlines so no white shows underneath wrapping
+    // When the line arrives (rawT >= 0.5), color over neighbor outlines and trigger scale lift
     if (rawT >= 0.5 && !this.infection.wrapStarted) {
       this.infection.wrapStarted = true;
       for (const nid of this.infection.neighborIds) {
+        const c = this.sprites.get(nid);
+        if (c && c.parent === this.nodeLayer) {
+          this.nodeLayer.addChild(c); // Bring to front of nodeLayer
+        }
         this.drawFrame(nid);
       }
+      this.updateInteraction();
     }
 
     // When the perimeter infection is complete (rawT >= 1.0), lock destination frames to infected outline
@@ -1094,7 +1103,14 @@ export class GraphEngine {
   private updateInteraction() {
     for (const node of this.nodes.values()) {
       const active = node.id === this.selected || node.id === this.hovered;
-      node.targetScale = active ? ACTIVE_SCALE : 1;
+      const isConnected =
+        this.layout.showLinks &&
+        Boolean(
+          this.infection &&
+          (this.infection.wrapStarted || this.infection.framesInfected) &&
+          this.infection.neighborIds.includes(node.id),
+        );
+      node.targetScale = active ? ACTIVE_SCALE : isConnected ? CONNECTED_SCALE : 1;
     }
 
     // During a filter transition a pre-existing selection still travels to its
