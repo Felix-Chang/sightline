@@ -38,6 +38,7 @@ export class GraphEngine {
   private layout: GraphLayout = { anchors: [], targets: new Map(), links: [], ring: false, showLinks: false };
   private selected: string | null = null;
   private hovered: string | null = null;
+  private autoPanTarget: { x: number; y: number } | null = null;
   private layoutTransition = false;
   private destroyed = false;
   private dragMoved = false;
@@ -71,6 +72,8 @@ export class GraphEngine {
     this.app.stage.addChild(this.world);
     this.fit();
     this.enablePanZoom();
+    this.app.ticker.add(this.advanceAutoPan);
+    this.cleanup.push(() => this.app.ticker.remove(this.advanceAutoPan));
     this.ready = true;
   }
 
@@ -97,10 +100,12 @@ export class GraphEngine {
       const s = Math.min(4, Math.max(minScale, this.world.scale.x * Math.exp(-e.deltaY * 0.0015)));
       this.world.scale.set(s);
       this.world.position.set(px - before.x * s, py - before.y * s);
+      this.beginAutoPanToVisibleNode();
       this.emitView();
     };
     let drag: { x: number; y: number; wx: number; wy: number } | null = null;
     const onDown = (e: PointerEvent) => {
+      this.autoPanTarget = null;
       drag = { x: e.clientX, y: e.clientY, wx: this.world.x, wy: this.world.y };
       this.dragMoved = false;
     };
@@ -109,7 +114,8 @@ export class GraphEngine {
       const dx = e.clientX - drag.x;
       const dy = e.clientY - drag.y;
       if (Math.abs(dx) + Math.abs(dy) > 3) this.dragMoved = true;
-      this.world.position.set(drag.wx + dx, drag.wy + dy);
+      const position = this.constrainPanToVisibleNode(drag.wx + dx, drag.wy + dy);
+      this.world.position.set(position.x, position.y);
       this.emitView();
     };
     const onUp = () => {
@@ -136,6 +142,77 @@ export class GraphEngine {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     });
+  }
+
+  /**
+   * Keep panning from losing the entire graph. The camera remains free until
+   * its proposed position would hide every complete thumbnail, at which point
+   * it is clamped just enough to retain the closest viable one.
+   */
+  private constrainPanToVisibleNode(x: number, y: number) {
+    const { width, height } = this.app.screen;
+    const zoom = this.world.scale.x;
+    const fullyVisible = (node: Node, px: number, py: number) => {
+      const bounds = this.thumbnailScreenBounds(node, zoom);
+      const centerX = px + (node.x ?? 0) * zoom;
+      const centerY = py + (node.y ?? 0) * zoom;
+      return centerX - bounds.x >= 0 && centerX + bounds.x <= width && centerY - bounds.y >= 0 && centerY + bounds.y <= height;
+    };
+    const nodes = [...this.nodes.values()].filter((node) => {
+      const bounds = this.thumbnailScreenBounds(node, zoom);
+      return node.x != null && node.y != null && bounds.x * 2 <= width && bounds.y * 2 <= height;
+    });
+    if (!nodes.length || nodes.some((node) => fullyVisible(node, x, y))) return { x, y };
+
+    let best: { x: number; y: number; distance: number } | null = null;
+    for (const node of nodes) {
+      const bounds = this.thumbnailScreenBounds(node, zoom);
+      const minX = bounds.x - (node.x ?? 0) * zoom;
+      const maxX = width - bounds.x - (node.x ?? 0) * zoom;
+      const minY = bounds.y - (node.y ?? 0) * zoom;
+      const maxY = height - bounds.y - (node.y ?? 0) * zoom;
+      const clampedX = Math.min(maxX, Math.max(minX, x));
+      const clampedY = Math.min(maxY, Math.max(minY, y));
+      const distance = (clampedX - x) ** 2 + (clampedY - y) ** 2;
+      if (!best || distance < best.distance) best = { x: clampedX, y: clampedY, distance };
+    }
+    return best ? { x: best.x, y: best.y } : { x, y };
+  }
+
+  /** Begin a camera-only correction after zoom leaves the graph out of view. */
+  private beginAutoPanToVisibleNode() {
+    const target = this.constrainPanToVisibleNode(this.world.x, this.world.y);
+    this.autoPanTarget = target.x === this.world.x && target.y === this.world.y ? null : target;
+  }
+
+  /** Ease toward the nearest valid camera position without changing zoom. */
+  private advanceAutoPan = () => {
+    const target = this.autoPanTarget;
+    if (!target) return;
+    const dx = target.x - this.world.x;
+    const dy = target.y - this.world.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 0.25) {
+      this.world.position.set(target.x, target.y);
+      this.autoPanTarget = null;
+      this.emitView();
+      return;
+    }
+    // Cover a distant empty viewport quickly, then ease sharply as the node
+    // reaches the edge so the correction never reads as a late teleport.
+    const step = Math.min(80, Math.max(0.5, distance * 0.16));
+    this.world.position.set(this.world.x + (dx / distance) * step, this.world.y + (dy / distance) * step);
+    this.emitView();
+  };
+
+  private thumbnailScreenBounds(node: Node, zoom: number) {
+    const container = this.sprites.get(node.id);
+    const sprite = container?.children[1] as Sprite | undefined;
+    const pad = node.id === this.selected ? 3 : node.id === this.hovered ? 2 : 0.5;
+    return {
+      x: ((sprite?.width ?? THUMB) / 2 + pad) * node.scale * zoom,
+      y: ((sprite?.height ?? THUMB) / 2 + pad) * node.scale * zoom,
+    };
   }
 
   /** Add any images not yet on the canvas (initial load or new uploads). */
