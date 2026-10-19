@@ -12,6 +12,13 @@ Reference libraries are usually filed by subject or by vibe: "posters", "editori
 
 Pick a category and the collection rearranges itself. Under **Line**, straight-line images gather at one anchor and shade toward jagged, then curved. Nothing is tagged by hand. The scores come from pixel measurements and an image/text model, and each one is a percentile across the whole collection, so "0.9 curved" means *more curved than 90% of your references*.
 
+**Try it now at: [sightline.photo](https://sightline.photo)**
+
+
+<a href="https://www.youtube.com/watch?v=7GOrbKFQO7w">
+  <img src="docs/sightline-thumbnail.png" alt="SightLine Demo" width="1000">
+</a>
+
 ## Why it exists
 
 Artists and designers collect constantly, and a reference folder almost always outgrows whatever system it started in. You can feel that the pieces you save have something in common, but the through-line stays a hunch — you cannot point at it, and you certainly cannot apply it on purpose.
